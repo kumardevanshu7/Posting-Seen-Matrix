@@ -80,3 +80,19 @@ export interface ComparisonReport {
   };
   edgePercentage: number; // Positive if algorithm outperforms user choice
 }
+
+export type Gender = 'male' | 'female' | 'non-binary' | 'prefer-not-to-say';
+
+export type RelationshipStatus = 'single' | 'in-a-relationship' | 'engaged' | 'married' | 'prefer-not-to-say';
+
+export interface UserProfile {
+  uid: string;
+  email: string;
+  name: string;
+  age: number;
+  gender: Gender;
+  relationship: RelationshipStatus;
+  onboarding_completed: boolean;
+  created_at: string;
+  updated_at: string;
+}

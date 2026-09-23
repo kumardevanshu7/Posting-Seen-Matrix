@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Bell, LogOut, User as UserIcon } from 'lucide-react';
-import { PostType, EngineStage } from '../types';
+import { PostType, EngineStage, UserProfile } from '../types';
 import { formatTimeIST, formatDateIST } from '../utils/dateUtils';
 import { User } from 'firebase/auth';
 
@@ -15,6 +15,8 @@ interface HeaderProps {
   currentView: string;
   onToggleView: (view: any) => void;
   currentUser?: User | null;
+  userProfile?: UserProfile | null;
+  onEditProfile?: () => void;
   onSignOut?: () => void;
 }
 
@@ -29,6 +31,8 @@ export const Header: React.FC<HeaderProps> = ({
   currentView,
   onToggleView,
   currentUser,
+  userProfile,
+  onEditProfile,
   onSignOut,
 }) => {
   const [currentIST, setCurrentIST] = useState<string>('');
@@ -155,12 +159,24 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
           )}
 
-          {/* User Auth Status */}
+          {/* User Auth Status & Creator Profile */}
           {currentUser ? (
             <div className="flex items-center gap-1.5 pl-1">
-              <span className="font-mono text-[11px] text-muted-foreground max-w-[120px] truncate" title={currentUser.email || ''}>
-                {currentUser.displayName || currentUser.email?.split('@')[0]}
-              </span>
+              <button
+                onClick={onEditProfile}
+                className="flex items-center gap-1.5 px-2 py-1 rounded-[5px] bg-secondary border border-border hover:border-input transition-colors group"
+                title="Edit Creator Profile"
+              >
+                <UserIcon className="w-3 h-3 text-muted-foreground group-hover:text-foreground" />
+                <span className="font-mono text-[11px] text-muted-foreground group-hover:text-foreground max-w-[130px] truncate">
+                  {userProfile?.name || currentUser.displayName || currentUser.email?.split('@')[0]}
+                </span>
+                {userProfile?.age && (
+                  <span className="text-[10px] text-muted-foreground font-mono">
+                    ({userProfile.age}y)
+                  </span>
+                )}
+              </button>
               <button
                 onClick={onSignOut}
                 className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"

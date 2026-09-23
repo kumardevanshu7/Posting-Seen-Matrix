@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { PostType, SlotSource, TimeSlotRecommendation } from './types';
+import { PostType, SlotSource, TimeSlotRecommendation, UserProfile } from './types';
 import { storageService } from './services/storageService';
+import { userService } from './services/userService';
 import { generateRecommendation, computeMatrixStats, computeComparisonReport, getEngineStage } from './services/predictionEngine';
 import { Header } from './components/Header';
 import { RecommendationHero } from './components/RecommendationHero';
@@ -10,6 +11,7 @@ import { HeatmapMatrix } from './components/HeatmapMatrix';
 import { ExternalSignalsSection } from './components/ExternalSignalsSection';
 import { PostTimeline } from './components/PostTimeline';
 import { QuickPostModal } from './components/QuickPostModal';
+import { OnboardingModal } from './components/OnboardingModal';
 import { LandingView } from './components/LandingView';
 import { ExploreView } from './components/ExploreView';
 import { AboutView } from './components/AboutView';
@@ -30,16 +32,32 @@ export const App: React.FC = () => {
   const [isQuickPostOpen, setIsQuickPostOpen] = useState(false);
   const [defaultSlotSource, setDefaultSlotSource] = useState<SlotSource>('user');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState(true);
   const [, setVersion] = useState(0);
 
-  // Subscribe to Firebase Auth changes
+  // Subscribe to Firebase Auth changes & check onboarding status
   useEffect(() => {
-    const unsubAuth = subscribeToAuth((user) => {
+    const unsubAuth = subscribeToAuth(async (user) => {
       setCurrentUser(user);
       if (user) {
-        // If user is signed in, default to console view
         setCurrentView('app');
+        try {
+          const profile = await userService.getUserProfile(user.uid);
+          setUserProfile(profile);
+          if (!profile || !profile.onboarding_completed) {
+            setIsOnboardingOpen(true);
+          } else {
+            setIsOnboardingOpen(false);
+          }
+        } catch (e) {
+          console.error('Error checking profile:', e);
+          setIsOnboardingOpen(true);
+        }
+      } else {
+        setUserProfile(null);
+        setIsOnboardingOpen(false);
       }
     });
     return unsubAuth;
@@ -137,6 +155,8 @@ export const App: React.FC = () => {
         currentView={currentView}
         onToggleView={setCurrentView}
         currentUser={currentUser}
+        userProfile={userProfile}
+        onEditProfile={() => setIsOnboardingOpen(true)}
         onSignOut={handleSignOut}
       />
 
@@ -244,6 +264,19 @@ export const App: React.FC = () => {
         defaultPostType={activePostType}
         defaultSlotSource={defaultSlotSource}
       />
+
+      {/* First-time Creator Onboarding Modal */}
+      {currentUser && (
+        <OnboardingModal
+          isOpen={isOnboardingOpen}
+          currentUser={currentUser}
+          onComplete={(profile) => {
+            setUserProfile(profile);
+            setIsOnboardingOpen(false);
+            setCurrentView('app');
+          }}
+        />
+      )}
 
       {/* Standard Legal Footer */}
       <LegalFooter onNavigate={setCurrentView} />
