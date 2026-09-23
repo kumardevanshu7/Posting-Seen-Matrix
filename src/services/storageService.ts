@@ -43,9 +43,6 @@ class StorageService {
 
   constructor() {
     this.loadFromLocal();
-    if (isSupabaseConfigured()) {
-      this.purgeOrphanedThumbnails().catch(() => {});
-    }
     if (isFirebaseConfigured() && db) {
       // Listen to auth state to scope Firestore queries strictly to authenticated creator
       this.unsubscribeAuth = subscribeToAuth((user) => {
@@ -273,9 +270,15 @@ class StorageService {
 
   public getPosts(postType?: PostType): Post[] {
     const active = this.posts.filter(p => !this.deletedPostIds.has(p.post_id));
-    if (postType) {
+    if (postType === 'trial') {
+      // Trial feed retains all trial reels, including those marked as shifted to public
       return active
-        .filter(p => p.post_type === postType)
+        .filter(p => p.post_type === 'trial' || !!p.promoted_to_public_at)
+        .sort((a, b) => new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime());
+    }
+    if (postType === 'public') {
+      return active
+        .filter(p => p.post_type === 'public')
         .sort((a, b) => new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime());
     }
     return [...active].sort((a, b) => new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime());
@@ -431,6 +434,35 @@ class StorageService {
         }
       }
     }
+  }
+
+  /**
+   * Updates an existing post's title or thumbnail media_ref.
+   * Persists locally and syncs to Cloud Firestore.
+   */
+  public async updatePost(postId: string, updates: Partial<Pick<Post, 'title' | 'media_ref'>>): Promise<boolean> {
+    const index = this.posts.findIndex(p => p.post_id === postId);
+    if (index === -1) return false;
+
+    this.posts[index] = {
+      ...this.posts[index],
+      ...updates,
+    };
+    this.persistLocal();
+
+    const uid = this.currentUserId || auth?.currentUser?.uid;
+    if (isFirebaseConfigured() && db && uid) {
+      try {
+        const postRef = doc(db, 'posts', postId);
+        const cleanUpdates = sanitizeForFirestore(updates);
+        await updateDoc(postRef, cleanUpdates);
+        console.log('[Firestore] Post updated successfully:', postId);
+      } catch (err) {
+        console.error('[Firestore] Failed to update post in cloud:', err);
+      }
+    }
+
+    return true;
   }
 
   public async deletePost(postId: string): Promise<void> {

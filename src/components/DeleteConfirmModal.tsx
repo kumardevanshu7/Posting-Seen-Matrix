@@ -103,7 +103,7 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
               </span>
             </div>
             <p className="font-medium text-foreground text-xs line-clamp-2">
-              {post.title || 'Untitled Reel'}
+              {post.title || post.caption || 'Untitled Reel'}
             </p>
             <p className="font-mono text-[11px] text-muted-foreground">
               Posted: {formatFullIST(post.posted_at)}

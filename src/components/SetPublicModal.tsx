@@ -3,6 +3,7 @@ import { X, Globe, Lock, AlertTriangle } from 'lucide-react';
 import { Post, UserProfile } from '../types';
 import { formatFullIST } from '../utils/dateUtils';
 import { storageService } from '../services/storageService';
+import { ReelThumbnail } from './ReelThumbnail';
 
 interface SetPublicModalProps {
   isOpen: boolean;
@@ -99,17 +100,7 @@ export const SetPublicModal: React.FC<SetPublicModalProps> = ({
 
           {/* Post preview card */}
           <div className="p-3 rounded-[6px] bg-secondary/70 border border-border space-y-1.5 text-xs flex items-center gap-3">
-            {post.media_ref ? (
-              <img
-                src={post.media_ref}
-                alt="Thumbnail"
-                className="w-12 h-12 rounded-[5px] object-cover border border-border shrink-0"
-              />
-            ) : (
-              <div className="w-12 h-12 rounded-[5px] bg-secondary border border-border flex items-center justify-center font-mono text-[10px] text-muted-foreground shrink-0">
-                reel
-              </div>
-            )}
+            <ReelThumbnail src={post.media_ref} size="w-12 h-12" />
             <div className="min-w-0 flex-1">
               <p className="font-medium text-foreground text-xs line-clamp-2">
                 {post.title || post.caption || 'Untitled Reel'}

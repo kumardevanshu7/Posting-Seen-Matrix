@@ -2,14 +2,16 @@ import React, { useState } from 'react';
 import { Post, UserProfile } from '../types';
 import { formatTimeIST, formatDateIST, formatFullIST, getTimeBucket, TIME_BUCKET_CONFIG, getCheckInStatus } from '../utils/dateUtils';
 import {
-  Search, Trash2, Calendar, List, Eye, ArrowLeft, Globe, Clock, CheckCircle2,
+  Search, Trash2, Calendar, List, Eye, ArrowLeft, Globe, Clock, CheckCircle2, Pencil,
 } from 'lucide-react';
+import { ReelThumbnail } from './ReelThumbnail';
 
 interface PublicReelsViewProps {
   publicPosts: Post[];
   userProfile: UserProfile | null;
   onBack: () => void;
   onRequestDeletePost: (post: Post) => void;
+  onRequestEditPost?: (post: Post) => void;
 }
 
 export const PublicReelsView: React.FC<PublicReelsViewProps> = ({
@@ -17,6 +19,7 @@ export const PublicReelsView: React.FC<PublicReelsViewProps> = ({
   userProfile,
   onBack,
   onRequestDeletePost,
+  onRequestEditPost,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [viewFormat, setViewFormat] = useState<'date_grouped' | 'flat'>('date_grouped');
@@ -67,17 +70,7 @@ export const PublicReelsView: React.FC<PublicReelsViewProps> = ({
       >
         {/* Left: Thumbnail & Details */}
         <div className="flex items-start gap-3 min-w-0">
-          {post.media_ref ? (
-            <img
-              src={post.media_ref}
-              alt="Thumbnail"
-              className="w-11 h-11 rounded-[5px] object-cover border border-border shrink-0"
-            />
-          ) : (
-            <div className="w-11 h-11 rounded-[5px] bg-secondary border border-border flex items-center justify-center font-mono text-[10px] text-muted-foreground shrink-0">
-              reel
-            </div>
-          )}
+          <ReelThumbnail src={post.media_ref} />
 
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
@@ -136,6 +129,17 @@ export const PublicReelsView: React.FC<PublicReelsViewProps> = ({
                 )}
               </span>
             </div>
+          )}
+
+          {/* Edit button */}
+          {onRequestEditPost && (
+            <button
+              onClick={() => onRequestEditPost(post)}
+              className="p-1.5 rounded-[4px] text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              title="Edit reel & thumbnail"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
           )}
 
           {/* Delete button */}

@@ -1,18 +1,27 @@
 import React, { useState } from 'react';
 import { Post, PostType } from '../types';
-import { formatTimeIST, formatDateIST, getTimeBucket, TIME_BUCKET_CONFIG } from '../utils/dateUtils';
-import { Search, Trash2, Calendar, List, Clock, Eye, ExternalLink } from 'lucide-react';
+import { formatTimeIST, formatDateIST, formatFullIST, getTimeBucket, TIME_BUCKET_CONFIG } from '../utils/dateUtils';
+import { Search, Trash2, Calendar, List, Clock, Eye, ExternalLink, CheckCircle2, Pencil } from 'lucide-react';
+import { ReelThumbnail } from './ReelThumbnail';
 import { storageService } from '../services/storageService';
 
 interface PostTimelineProps {
   posts: Post[];
   postType: PostType;
   onRequestDeletePost?: (post: Post) => void;
+  onRequestEditPost?: (post: Post) => void;
   onOpenTrialBoard?: () => void;
   onOpenPublicBoard?: () => void;
 }
 
-export const PostTimeline: React.FC<PostTimelineProps> = ({ posts, postType, onRequestDeletePost, onOpenTrialBoard, onOpenPublicBoard }) => {
+export const PostTimeline: React.FC<PostTimelineProps> = ({
+  posts,
+  postType,
+  onRequestDeletePost,
+  onRequestEditPost,
+  onOpenTrialBoard,
+  onOpenPublicBoard,
+}) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'completed' | 'pending'>('all');
   const [viewFormat, setViewFormat] = useState<'date_grouped' | 'flat'>('date_grouped');
@@ -205,89 +214,107 @@ export const PostTimeline: React.FC<PostTimelineProps> = ({ posts, postType, onR
                 <div className="divide-y divide-border">
                   {group.posts.map(post => {
                     const bucket = getTimeBucket(post.posted_at);
-                    const isCompleted = post.views_24h !== null;
+                    const isPromoted = !!post.promoted_to_public_at;
+                    const effectiveViews = (postType === 'trial' && isPromoted)
+                      ? (post.trial_views_24h ?? post.views_24h)
+                      : post.views_24h;
+                    const isCompleted = effectiveViews !== null && effectiveViews !== undefined;
 
                     return (
                       <div
                         key={post.post_id}
-                        className="py-3 px-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 hover:bg-accent/40 transition-colors"
+                        className="py-3 px-3.5 flex flex-col gap-2 hover:bg-accent/40 transition-colors"
                       >
-                        {/* Left: Thumbnail & Details */}
-                        <div className="flex items-start gap-3 min-w-0">
-                          {post.media_ref ? (
-                            <img
-                              src={post.media_ref}
-                              alt="Thumbnail"
-                              className="w-11 h-11 rounded-[5px] object-cover border border-border shrink-0"
-                            />
-                          ) : (
-                            <div className="w-11 h-11 rounded-[5px] bg-secondary border border-border flex items-center justify-center font-mono text-[10px] text-muted-foreground shrink-0">
-                              reel
-                            </div>
-                          )}
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                          {/* Left: Thumbnail & Details */}
+                          <div className="flex items-start gap-3 min-w-0">
+                            <ReelThumbnail src={post.media_ref} />
 
-                          <div className="min-w-0">
-                            {/* Title (Prominent) */}
-                            <div className="flex items-center gap-2">
-                              <h4 className="text-xs font-semibold text-foreground truncate max-w-sm sm:max-w-md">
-                                {post.title || post.caption || 'Untitled Reel'}
-                              </h4>
-                              <span className="font-mono text-[10px] uppercase tracking-sec-label px-1.5 py-0.2 rounded-[4px] bg-secondary border border-border text-muted-foreground shrink-0">
-                                {post.slot_source === 'algorithm' ? 'algo' : 'manual'}
-                              </span>
-                            </div>
+                            <div className="min-w-0">
+                              {/* Title (Prominent) */}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className="text-xs font-semibold text-foreground truncate max-w-sm sm:max-w-md">
+                                  {post.title || post.caption || 'Untitled Reel'}
+                                </h4>
+                                <span className="font-mono text-[10px] uppercase tracking-sec-label px-1.5 py-0.2 rounded-[4px] bg-secondary border border-border text-muted-foreground shrink-0">
+                                  {post.slot_source === 'algorithm' ? 'algo' : 'manual'}
+                                </span>
+                                {isPromoted && postType === 'trial' && (
+                                  <span className="font-mono text-[10px] uppercase tracking-wider px-1.5 py-0.2 rounded-[4px] bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 shrink-0">
+                                    public
+                                  </span>
+                                )}
+                              </div>
 
-                            {/* Time in IST & Bucket */}
-                            <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-muted-foreground mt-0.5">
-                              <span className="text-foreground font-medium">
-                                {formatTimeIST(post.posted_at)}
-                              </span>
-                              <span>•</span>
-                              <span className="capitalize">{TIME_BUCKET_CONFIG[bucket].label} Bucket</span>
-                              {post.caption && post.title && (
-                                <>
-                                  <span>•</span>
-                                  <span className="text-muted-foreground truncate max-w-xs">{post.caption}</span>
-                                </>
+                              {/* Time in IST & Bucket */}
+                              <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-muted-foreground mt-0.5">
+                                <span className="text-foreground font-medium">
+                                  {formatTimeIST(post.posted_at)}
+                                </span>
+                                <span>•</span>
+                                <span className="capitalize">{TIME_BUCKET_CONFIG[bucket].label} Bucket</span>
+                                {post.caption && post.title && (
+                                  <>
+                                    <span>•</span>
+                                    <span className="text-muted-foreground truncate max-w-xs">{post.caption}</span>
+                                  </>
+                                )}
+                              </div>
+
+                              {post.notes && (
+                                <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1 italic">
+                                  "{post.notes}"
+                                </p>
                               )}
                             </div>
+                          </div>
 
-                            {post.notes && (
-                              <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1 italic">
-                                "{post.notes}"
-                              </p>
+                          {/* Right: Views Status & Actions */}
+                          <div className="shrink-0 flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+                            {isCompleted ? (
+                              <div className="text-right font-mono">
+                                <div className="text-xs font-semibold text-foreground flex items-center gap-1.5 justify-end">
+                                  <Eye className="w-3.5 h-3.5 text-muted-foreground" />
+                                  <span>{effectiveViews.toLocaleString()} views</span>
+                                </div>
+                                <div className="text-[10px] text-emerald-400">
+                                  {isPromoted && postType === 'trial' ? 'trial locked' : '24h locked'}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="font-mono text-[11px] text-muted-foreground px-2 py-0.5 rounded-[4px] bg-secondary border border-border flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                <span>24h timer active</span>
+                              </div>
                             )}
+
+                            {onRequestEditPost && (
+                              <button
+                                onClick={() => onRequestEditPost(post)}
+                                className="p-1.5 rounded-[4px] text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                                title="Edit reel & thumbnail"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+
+                            <button
+                              onClick={() => handleDeletePost(post)}
+                              className="p-1.5 rounded-[4px] text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                              title="Remove post"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         </div>
 
-                        {/* Right: Views Status & Actions */}
-                        <div className="shrink-0 flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
-                          {isCompleted ? (
-                            <div className="text-right font-mono">
-                              <div className="text-xs font-semibold text-foreground flex items-center gap-1.5 justify-end">
-                                <Eye className="w-3.5 h-3.5 text-muted-foreground" />
-                                <span>{post.views_24h?.toLocaleString()} views</span>
-                              </div>
-                              <div className="text-[10px] text-emerald-400">
-                                24h locked
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="font-mono text-[11px] text-muted-foreground px-2 py-0.5 rounded-[4px] bg-secondary border border-border flex items-center gap-1">
-                              <Clock className="w-3 h-3" />
-                              <span>24h timer active</span>
-                            </div>
-                          )}
-
-                          <button
-                            onClick={() => handleDeletePost(post)}
-                            className="p-1.5 rounded-[4px] text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                            title="Remove post"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-
+                        {/* Shifted to Public Banner (shows in trial mode) */}
+                        {isPromoted && postType === 'trial' && post.promoted_to_public_at && (
+                          <div className="ml-14 flex items-center gap-1.5 px-2.5 py-1 rounded-[5px] bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 font-mono text-[11px] w-fit">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                            <span>Shifted to Public · {formatFullIST(post.promoted_to_public_at)}</span>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -304,68 +331,87 @@ export const PostTimeline: React.FC<PostTimelineProps> = ({ posts, postType, onR
         <div className="divide-y divide-border border-t border-border mt-2">
           {filteredPosts.map(post => {
             const bucket = getTimeBucket(post.posted_at);
-            const isCompleted = post.views_24h !== null;
+            const isPromoted = !!post.promoted_to_public_at;
+            const effectiveViews = (postType === 'trial' && isPromoted)
+              ? (post.trial_views_24h ?? post.views_24h)
+              : post.views_24h;
+            const isCompleted = effectiveViews !== null && effectiveViews !== undefined;
 
             return (
               <div
                 key={post.post_id}
-                className="py-3 px-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 hover:bg-accent/40 transition-colors"
+                className="py-3 px-2 flex flex-col gap-2 hover:bg-accent/40 transition-colors"
               >
-                <div className="flex items-start gap-3 min-w-0">
-                  {post.media_ref ? (
-                    <img
-                      src={post.media_ref}
-                      alt="Thumbnail"
-                      className="w-10 h-10 rounded-[5px] object-cover border border-border shrink-0"
-                    />
-                  ) : (
-                    <div className="w-10 h-10 rounded-[5px] bg-secondary border border-border flex items-center justify-center font-mono text-[10px] text-muted-foreground shrink-0">
-                      reel
-                    </div>
-                  )}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <ReelThumbnail src={post.media_ref} size="w-10 h-10" />
 
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium text-foreground truncate max-w-sm sm:max-w-md">
-                        {post.title || post.caption || 'Untitled Reel'}
-                      </span>
-                      <span className="font-mono text-[10px] uppercase tracking-sec-label px-1.5 py-0.2 rounded-[4px] bg-secondary border border-border text-muted-foreground shrink-0">
-                        {post.slot_source === 'algorithm' ? 'algo' : 'manual'}
-                      </span>
-                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-medium text-foreground truncate max-w-sm sm:max-w-md">
+                          {post.title || post.caption || 'Untitled Reel'}
+                        </span>
+                        <span className="font-mono text-[10px] uppercase tracking-sec-label px-1.5 py-0.2 rounded-[4px] bg-secondary border border-border text-muted-foreground shrink-0">
+                          {post.slot_source === 'algorithm' ? 'algo' : 'manual'}
+                        </span>
+                        {isPromoted && postType === 'trial' && (
+                          <span className="font-mono text-[10px] uppercase tracking-wider px-1.5 py-0.2 rounded-[4px] bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 shrink-0">
+                            public
+                          </span>
+                        )}
+                      </div>
 
-                    <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-muted-foreground mt-0.5">
-                      <span>{formatDateIST(post.posted_at, false)} • {formatTimeIST(post.posted_at)}</span>
-                      <span>•</span>
-                      <span className="capitalize">{TIME_BUCKET_CONFIG[bucket].label}</span>
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-muted-foreground mt-0.5">
+                        <span>{formatDateIST(post.posted_at, false)} • {formatTimeIST(post.posted_at)}</span>
+                        <span>•</span>
+                        <span className="capitalize">{TIME_BUCKET_CONFIG[bucket].label}</span>
+                      </div>
                     </div>
+                  </div>
+
+                  <div className="shrink-0 flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+                    {isCompleted ? (
+                      <div className="text-right font-mono">
+                        <div className="text-xs font-semibold text-foreground">
+                          {effectiveViews.toLocaleString()} views
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">
+                          {isPromoted && postType === 'trial' ? 'trial locked' : '24h verified'}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="font-mono text-[11px] text-muted-foreground px-2 py-0.5 rounded-[4px] bg-secondary border border-border">
+                        Timer active
+                      </div>
+                    )}
+
+                    {onRequestEditPost && (
+                      <button
+                        onClick={() => onRequestEditPost(post)}
+                        className="p-1.5 rounded-[4px] text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                        title="Edit reel & thumbnail"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => handleDeletePost(post)}
+                      className="p-1.5 rounded-[4px] text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                      title="Remove post"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
 
-                <div className="shrink-0 flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
-                  {isCompleted ? (
-                    <div className="text-right font-mono">
-                      <div className="text-xs font-semibold text-foreground">
-                        {post.views_24h?.toLocaleString()} views
-                      </div>
-                      <div className="text-[10px] text-muted-foreground">
-                        24h verified
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="font-mono text-[11px] text-muted-foreground px-2 py-0.5 rounded-[4px] bg-secondary border border-border">
-                      Timer active
-                    </div>
-                  )}
-
-                  <button
-                    onClick={() => handleDeletePost(post)}
-                    className="p-1.5 rounded-[4px] text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                    title="Remove post"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+                {/* Shifted to Public Banner (flat view, trial mode) */}
+                {isPromoted && postType === 'trial' && post.promoted_to_public_at && (
+                  <div className="ml-13 flex items-center gap-1.5 px-2.5 py-1 rounded-[5px] bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 font-mono text-[11px] w-fit">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span>Shifted to Public · {formatFullIST(post.promoted_to_public_at)}</span>
+                  </div>
+                )}
               </div>
             );
           })}

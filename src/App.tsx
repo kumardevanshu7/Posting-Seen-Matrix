@@ -16,6 +16,7 @@ import { SmartSlot } from './services/slotDistributionEngine';
 import { OnboardingModal } from './components/OnboardingModal';
 import { SettingsModal } from './components/SettingsModal';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
+import { EditPostModal } from './components/EditPostModal';
 import { LandingView } from './components/LandingView';
 import { ExploreView } from './components/ExploreView';
 import { AboutView } from './components/AboutView';
@@ -48,6 +49,7 @@ export const App: React.FC = () => {
   const [isOnboardingOpen, setIsOnboardingOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [deleteTargetPost, setDeleteTargetPost] = useState<Post | null>(null);
+  const [editTargetPost, setEditTargetPost] = useState<Post | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [, setVersion] = useState(0);
 
@@ -199,6 +201,7 @@ export const App: React.FC = () => {
           userProfile={userProfile}
           onBack={() => { setCurrentView('app'); setActivePostType('trial'); }}
           onRequestDeletePost={(post) => setDeleteTargetPost(post)}
+          onRequestEditPost={(post) => setEditTargetPost(post)}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onRefresh={() => setVersion(v => v + 1)}
         />
@@ -210,6 +213,15 @@ export const App: React.FC = () => {
           userProfile={userProfile}
           onConfirmDelete={handleConfirmDeletePost}
           onOpenSettings={() => setIsSettingsOpen(true)}
+        />
+        {/* PIN-Protected Post Edit Modal */}
+        <EditPostModal
+          isOpen={!!editTargetPost}
+          onClose={() => setEditTargetPost(null)}
+          post={editTargetPost}
+          userProfile={userProfile}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          onSuccess={() => setVersion(v => v + 1)}
         />
         {currentUser && (
           <SettingsModal
@@ -234,6 +246,7 @@ export const App: React.FC = () => {
           userProfile={userProfile}
           onBack={() => { setCurrentView('app'); setActivePostType('public'); }}
           onRequestDeletePost={(post) => setDeleteTargetPost(post)}
+          onRequestEditPost={(post) => setEditTargetPost(post)}
         />
         {/* PIN-Protected Post Deletion Modal — also needed on public board */}
         <DeleteConfirmModal
@@ -243,6 +256,15 @@ export const App: React.FC = () => {
           userProfile={userProfile}
           onConfirmDelete={handleConfirmDeletePost}
           onOpenSettings={() => setIsSettingsOpen(true)}
+        />
+        {/* PIN-Protected Post Edit Modal */}
+        <EditPostModal
+          isOpen={!!editTargetPost}
+          onClose={() => setEditTargetPost(null)}
+          post={editTargetPost}
+          userProfile={userProfile}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          onSuccess={() => setVersion(v => v + 1)}
         />
         {currentUser && (
           <SettingsModal
@@ -348,6 +370,7 @@ export const App: React.FC = () => {
             posts={currentPosts}
             postType={activePostType}
             onRequestDeletePost={(post) => setDeleteTargetPost(post)}
+            onRequestEditPost={(post) => setEditTargetPost(post)}
             onOpenTrialBoard={() => setCurrentView('trial_board')}
             onOpenPublicBoard={() => setCurrentView('public_board')}
           />
@@ -451,6 +474,16 @@ export const App: React.FC = () => {
         userProfile={userProfile}
         onConfirmDelete={handleConfirmDeletePost}
         onOpenSettings={() => setIsSettingsOpen(true)}
+      />
+
+      {/* PIN-Protected Post Edit Modal */}
+      <EditPostModal
+        isOpen={!!editTargetPost}
+        onClose={() => setEditTargetPost(null)}
+        post={editTargetPost}
+        userProfile={userProfile}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        onSuccess={() => setVersion(v => v + 1)}
       />
 
       {/* Standard Legal Footer */}
