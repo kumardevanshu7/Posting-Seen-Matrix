@@ -6,6 +6,7 @@ export type TimeBucket = 'morning' | 'afternoon' | 'evening' | 'night';
 
 export interface Post {
   post_id: string;
+  user_id?: string; // Authenticated creator UID
   title?: string;
   post_type: PostType;
   posted_at: string; // ISO 8601 UTC timestamp
@@ -20,6 +21,7 @@ export interface Post {
 
 export interface ExternalSignal {
   signal_id: string;
+  user_id?: string; // Authenticated creator UID
   week_of: string; // YYYY-MM-DD representing the Monday/start of the week
   note_text: string; // Free-form: algorithm news, shadow-ban reports, trending audio
   source_url?: string;

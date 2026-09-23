@@ -1,5 +1,5 @@
 import { Post, PostType, ExternalSignal } from '../types';
-import { db, isFirebaseConfigured } from '../config/firebase';
+import { db, auth, subscribeToAuth, isFirebaseConfigured } from '../config/firebase';
 import { supabase, supabaseConfig, isSupabaseConfigured } from '../config/supabase';
 import { 
   collection, 
@@ -9,7 +9,7 @@ import {
   deleteDoc, 
   onSnapshot, 
   query, 
-  orderBy 
+  where 
 } from 'firebase/firestore';
 
 const STORAGE_KEY_POSTS = 'time_matrix_posts_v3';
@@ -19,13 +19,25 @@ class StorageService {
   private posts: Post[] = [];
   private signals: ExternalSignal[] = [];
   private listeners: Array<() => void> = [];
+  private currentUserId: string | null = null;
   private unsubscribeFirestorePosts: (() => void) | null = null;
   private unsubscribeFirestoreSignals: (() => void) | null = null;
+  private unsubscribeAuth: (() => void) | null = null;
 
   constructor() {
     this.loadFromLocal();
     if (isFirebaseConfigured() && db) {
-      this.initFirestoreSync();
+      // Listen to auth state to scope Firestore queries strictly to authenticated creator
+      this.unsubscribeAuth = subscribeToAuth((user) => {
+        const newUid = user ? user.uid : null;
+        if (newUid !== this.currentUserId) {
+          this.detachFirestoreListeners();
+          this.currentUserId = newUid;
+          if (newUid) {
+            this.initFirestoreSync(newUid);
+          }
+        }
+      });
     }
   }
 
@@ -52,14 +64,25 @@ class StorageService {
     this.notify();
   }
 
-  private initFirestoreSync() {
-    if (!db) return;
+  private detachFirestoreListeners() {
+    if (this.unsubscribeFirestorePosts) {
+      this.unsubscribeFirestorePosts();
+      this.unsubscribeFirestorePosts = null;
+    }
+    if (this.unsubscribeFirestoreSignals) {
+      this.unsubscribeFirestoreSignals();
+      this.unsubscribeFirestoreSignals = null;
+    }
+  }
+
+  private initFirestoreSync(uid: string) {
+    if (!db || !uid) return;
     const firestoreDb = db;
 
     try {
-      // 1. Realtime listener for posts with non-destructive merge & backfill
+      // 1. Realtime listener for posts strictly scoped to authenticated user
       const postsCol = collection(firestoreDb, 'posts');
-      const postsQuery = query(postsCol, orderBy('posted_at', 'desc'));
+      const postsQuery = query(postsCol, where('user_id', '==', uid));
 
       this.unsubscribeFirestorePosts = onSnapshot(postsQuery, async (snapshot) => {
         const remotePosts: Post[] = [];
@@ -73,13 +96,18 @@ class StorageService {
         // Check if there are local posts that don't exist in Firestore (e.g. created offline or before connection)
         const unSyncedLocalPosts = this.posts.filter(localPost => !remoteMap.has(localPost.post_id));
 
-        // Backfill local posts to Cloud Firestore so they are never silently erased
+        // Backfill local posts to Cloud Firestore tagged with this user's UID
         if (unSyncedLocalPosts.length > 0 && isFirebaseConfigured()) {
-          console.log(`[Firestore] Preserving & backfilling ${unSyncedLocalPosts.length} local posts to Cloud Firestore...`);
+          console.log(`[Firestore] Preserving & backfilling ${unSyncedLocalPosts.length} local posts to Cloud Firestore for user ${uid}...`);
           for (const localPost of unSyncedLocalPosts) {
             try {
-              await setDoc(doc(firestoreDb, 'posts', localPost.post_id), localPost);
-              remoteMap.set(localPost.post_id, localPost);
+              if (!localPost.user_id) {
+                localPost.user_id = uid;
+              }
+              if (localPost.user_id === uid) {
+                await setDoc(doc(firestoreDb, 'posts', localPost.post_id), localPost);
+                remoteMap.set(localPost.post_id, localPost);
+              }
             } catch (syncErr) {
               console.warn('[Firestore] Failed to backfill local post:', localPost.post_id, syncErr);
             }
@@ -95,9 +123,9 @@ class StorageService {
         console.warn('[Firestore] Posts listener fallback to local:', error);
       });
 
-      // 2. Realtime listener for external signals with non-destructive merge & backfill
+      // 2. Realtime listener for external signals strictly scoped to authenticated user
       const signalsCol = collection(firestoreDb, 'external_signals');
-      const signalsQuery = query(signalsCol, orderBy('week_of', 'desc'));
+      const signalsQuery = query(signalsCol, where('user_id', '==', uid));
 
       this.unsubscribeFirestoreSignals = onSnapshot(signalsQuery, async (snapshot) => {
         const remoteSignals: ExternalSignal[] = [];
@@ -109,11 +137,16 @@ class StorageService {
         const unSyncedLocalSignals = this.signals.filter(localSig => !remoteMap.has(localSig.signal_id));
 
         if (unSyncedLocalSignals.length > 0 && isFirebaseConfigured()) {
-          console.log(`[Firestore] Preserving & backfilling ${unSyncedLocalSignals.length} local signals to Cloud Firestore...`);
+          console.log(`[Firestore] Preserving & backfilling ${unSyncedLocalSignals.length} local signals to Cloud Firestore for user ${uid}...`);
           for (const localSig of unSyncedLocalSignals) {
             try {
-              await setDoc(doc(firestoreDb, 'external_signals', localSig.signal_id), localSig);
-              remoteMap.set(localSig.signal_id, localSig);
+              if (!localSig.user_id) {
+                localSig.user_id = uid;
+              }
+              if (localSig.user_id === uid) {
+                await setDoc(doc(firestoreDb, 'external_signals', localSig.signal_id), localSig);
+                remoteMap.set(localSig.signal_id, localSig);
+              }
             } catch (syncErr) {
               console.warn('[Firestore] Failed to backfill local signal:', localSig.signal_id, syncErr);
             }
@@ -164,9 +197,11 @@ class StorageService {
    * Stored in Cloud Firestore and mirrored locally.
    */
   public async addPost(post: Omit<Post, 'post_id' | 'views_24h' | 'check_in_completed_at'>): Promise<Post> {
+    const uid = this.currentUserId || auth?.currentUser?.uid || undefined;
     const newPost: Post = {
       ...post,
       post_id: 'post_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36),
+      user_id: uid,
       views_24h: null,
       check_in_completed_at: null,
     };
@@ -175,8 +210,8 @@ class StorageService {
     this.posts.unshift(newPost);
     this.persistLocal();
 
-    // Sync to Cloud Firestore
-    if (isFirebaseConfigured() && db) {
+    // Sync to Cloud Firestore if authenticated
+    if (isFirebaseConfigured() && db && uid) {
       try {
         await setDoc(doc(db, 'posts', newPost.post_id), newPost);
         console.log('[Firestore] Post synced successfully:', newPost.post_id);
@@ -206,8 +241,9 @@ class StorageService {
     };
     this.persistLocal();
 
-    // Sync to Cloud Firestore
-    if (isFirebaseConfigured() && db) {
+    // Sync to Cloud Firestore if authenticated
+    const uid = this.currentUserId || auth?.currentUser?.uid;
+    if (isFirebaseConfigured() && db && uid) {
       try {
         const postRef = doc(db, 'posts', postId);
         await updateDoc(postRef, {
@@ -246,7 +282,8 @@ class StorageService {
     this.posts = this.posts.filter(p => p.post_id !== postId);
     this.persistLocal();
 
-    if (isFirebaseConfigured() && db) {
+    const uid = this.currentUserId || auth?.currentUser?.uid;
+    if (isFirebaseConfigured() && db && uid) {
       try {
         await deleteDoc(doc(db, 'posts', postId));
         console.log('[Firestore] Post deleted from cloud:', postId);
@@ -268,7 +305,8 @@ class StorageService {
     this.signals = [];
     this.persistLocal();
 
-    if (isFirebaseConfigured() && db) {
+    const uid = this.currentUserId || auth?.currentUser?.uid;
+    if (isFirebaseConfigured() && db && uid) {
       const firestoreDb = db;
       try {
         const batchDeletes: Promise<any>[] = [];
@@ -287,16 +325,13 @@ class StorageService {
   }
 
   /**
-   * Unsubscribes active Firestore listeners to prevent memory leaks during lifecycle teardowns.
+   * Unsubscribes active Firestore and Auth listeners to prevent memory leaks during lifecycle teardowns.
    */
   public destroy(): void {
-    if (this.unsubscribeFirestorePosts) {
-      this.unsubscribeFirestorePosts();
-      this.unsubscribeFirestorePosts = null;
-    }
-    if (this.unsubscribeFirestoreSignals) {
-      this.unsubscribeFirestoreSignals();
-      this.unsubscribeFirestoreSignals = null;
+    this.detachFirestoreListeners();
+    if (this.unsubscribeAuth) {
+      this.unsubscribeAuth();
+      this.unsubscribeAuth = null;
     }
   }
 
@@ -307,16 +342,18 @@ class StorageService {
   }
 
   public async addSignal(signal: Omit<ExternalSignal, 'signal_id' | 'created_at'>): Promise<ExternalSignal> {
+    const uid = this.currentUserId || auth?.currentUser?.uid || undefined;
     const newSignal: ExternalSignal = {
       ...signal,
       signal_id: 'sig_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36),
+      user_id: uid,
       created_at: new Date().toISOString(),
     };
 
     this.signals.unshift(newSignal);
     this.persistLocal();
 
-    if (isFirebaseConfigured() && db) {
+    if (isFirebaseConfigured() && db && uid) {
       try {
         await setDoc(doc(db, 'external_signals', newSignal.signal_id), newSignal);
         console.log('[Firestore] External signal saved to cloud:', newSignal.signal_id);
@@ -332,7 +369,8 @@ class StorageService {
     this.signals = this.signals.filter(s => s.signal_id !== signalId);
     this.persistLocal();
 
-    if (isFirebaseConfigured() && db) {
+    const uid = this.currentUserId || auth?.currentUser?.uid;
+    if (isFirebaseConfigured() && db && uid) {
       try {
         await deleteDoc(doc(db, 'external_signals', signalId));
       } catch (err) {

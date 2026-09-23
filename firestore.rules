@@ -8,34 +8,70 @@ service cloud.firestore {
       return text is string && text.size() > 0;
     }
 
-    // 1. Posts Collection: Strict validation for Time Matrix
-    match /posts/{postId} {
-      // Allow reading posts
-      allow read: if true;
+    // Helper function to check if user is authenticated
+    function isSignedIn() {
+      return request.auth != null;
+    }
 
-      // Allow creating posts with valid types and immutable timestamp
-      allow create: if request.resource.data.post_type in ['trial', 'public']
+    // Helper function to verify document ownership
+    function isOwner(data) {
+      return isSignedIn() && ('user_id' in data) && data.user_id == request.auth.uid;
+    }
+
+    // 1. Posts Collection: Strict validation, immutability & creator ownership
+    match /posts/{postId} {
+      // Only the authenticated creator can read their own posts
+      allow read: if isOwner(resource.data);
+
+      // Only signed-in creators can create posts, and must tag it with their own UID
+      allow create: if isSignedIn()
+                    && ('user_id' in request.resource.data)
+                    && request.resource.data.user_id == request.auth.uid
+                    && request.resource.data.post_type in ['trial', 'public']
                     && request.resource.data.slot_source in ['algorithm', 'user']
                     && isNonEmptyString(request.resource.data.posted_at);
 
-      // Allow updating 24-hour views and completion timestamp
-      allow update: if request.resource.data.post_type in ['trial', 'public']
-                    && request.resource.data.slot_source in ['algorithm', 'user']
+      // Updates allowed ONLY by the creator owner:
+      // posted_at, post_type, slot_source, and user_id are strictly immutable
+      allow update: if isOwner(resource.data)
+                    && request.resource.data.user_id == resource.data.user_id
+                    && request.resource.data.posted_at == resource.data.posted_at
+                    && request.resource.data.post_type == resource.data.post_type
+                    && request.resource.data.slot_source == resource.data.slot_source
                     && (request.resource.data.views_24h == null || request.resource.data.views_24h is number);
 
-      // Allow deleting a post
-      allow delete: if true;
+      // Only the creator owner can delete their post
+      allow delete: if isOwner(resource.data);
     }
 
     // 2. External Signals Collection (Weekly Platform Notes)
     match /external_signals/{signalId} {
-      allow read: if true;
-      allow create, update: if isNonEmptyString(request.resource.data.week_of)
-                            && isNonEmptyString(request.resource.data.note_text);
-      allow delete: if true;
+      // Only the authenticated owner can read their own notes
+      allow read: if isOwner(resource.data);
+
+      // Only signed-in creators can create notes, must tag with their UID
+      allow create: if isSignedIn()
+                    && ('user_id' in request.resource.data)
+                    && request.resource.data.user_id == request.auth.uid
+                    && isNonEmptyString(request.resource.data.week_of)
+                    && isNonEmptyString(request.resource.data.note_text);
+
+      // Updates allowed ONLY by the note owner
+      allow update: if isOwner(resource.data)
+                    && request.resource.data.user_id == resource.data.user_id
+                    && isNonEmptyString(request.resource.data.week_of)
+                    && isNonEmptyString(request.resource.data.note_text);
+
+      // Only the owner can delete their note
+      allow delete: if isOwner(resource.data);
     }
 
-    // Default: Deny all other collections for security
+    // 3. User Profiles Collection (Creator Onboarding & Profile Settings)
+    match /users/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Default: Deny all other collections for strict security
     match /{document=**} {
       allow read, write: if false;
     }
