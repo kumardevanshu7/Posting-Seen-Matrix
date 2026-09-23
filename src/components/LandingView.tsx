@@ -1,16 +1,24 @@
-import React, { useState } from 'react';
-import { ArrowRight, Lock, CheckCircle2, LogIn } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ArrowRight, Lock, CheckCircle2, LogIn, BookOpen } from 'lucide-react';
 import { loginWithGoogle, logout } from '../config/firebase';
 import { User } from 'firebase/auth';
 
 interface LandingViewProps {
   onEnterApp: () => void;
   currentUser: User | null;
+  onNavigate?: (view: any) => void;
 }
 
-export const LandingView: React.FC<LandingViewProps> = ({ onEnterApp, currentUser }) => {
+export const LandingView: React.FC<LandingViewProps> = ({ onEnterApp, currentUser, onNavigate }) => {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+
+  // If user is already authenticated, immediately launch the console without showing landing page
+  useEffect(() => {
+    if (currentUser) {
+      onEnterApp();
+    }
+  }, [currentUser, onEnterApp]);
 
   const handleGoogleLogin = async () => {
     setIsLoggingIn(true);
@@ -151,9 +159,19 @@ export const LandingView: React.FC<LandingViewProps> = ({ onEnterApp, currentUse
               </button>
             )}
 
+            {onNavigate && (
+              <button
+                onClick={() => onNavigate('article')}
+                className="w-full sm:w-auto h-10 px-4 rounded-[6px] border border-input bg-transparent text-foreground hover:bg-accent text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <BookOpen className="w-3.5 h-3.5 text-amber-400" />
+                <span>Read Algorithm Article</span>
+              </button>
+            )}
+
             <button
               onClick={onEnterApp}
-              className="w-full sm:w-auto h-10 px-4 rounded-[6px] border border-input bg-transparent text-foreground hover:bg-accent text-xs font-medium flex items-center justify-center transition-colors"
+              className="w-full sm:w-auto h-10 px-4 rounded-[6px] border border-input bg-transparent text-foreground hover:bg-accent text-xs font-medium flex items-center justify-center transition-colors cursor-pointer"
             >
               Enter Console directly
             </button>

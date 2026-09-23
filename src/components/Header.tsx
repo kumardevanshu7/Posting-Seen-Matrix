@@ -144,12 +144,31 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="hidden sm:block h-3.5 w-px bg-border/60" />
 
             {/* View Toggle: Overview / Console */}
+            {currentView !== 'app' ? (
+              <button
+                onClick={() => onToggleView('app')}
+                className="h-7 px-2.5 rounded-[5px] bg-primary text-primary-foreground text-[11px] font-mono font-medium transition-colors cursor-pointer flex items-center gap-1"
+                title="Return to App Console"
+              >
+                <span>Console</span>
+              </button>
+            ) : !currentUser ? (
+              <button
+                onClick={() => onToggleView('landing')}
+                className="h-7 px-2 rounded-[5px] border border-input bg-transparent text-foreground hover:bg-accent text-[11px] font-mono transition-colors cursor-pointer"
+                title="View Landing Page"
+              >
+                Overview
+              </button>
+            ) : null}
+
+            {/* Science / Article */}
             <button
-              onClick={() => onToggleView(currentView === 'app' ? 'landing' : 'app')}
+              onClick={() => onToggleView('article')}
               className="h-7 px-2 rounded-[5px] border border-input bg-transparent text-foreground hover:bg-accent text-[11px] font-mono transition-colors cursor-pointer"
-              title="Toggle Landing Page / App Console"
+              title="The Science & Architecture of Time Matrix"
             >
-              {currentView === 'app' ? 'Overview' : 'Console'}
+              Article
             </button>
 
             {/* Explore Arigato Labs */}

@@ -1,7 +1,7 @@
 import React from 'react';
 
 interface LegalFooterProps {
-  onNavigate: (view: 'app' | 'landing' | 'explore' | 'about' | 'privacy' | 'terms' | 'disclaimer' | 'contact') => void;
+  onNavigate: (view: any) => void;
 }
 
 export const LegalFooter: React.FC<LegalFooterProps> = ({ onNavigate }) => {
@@ -12,8 +12,15 @@ export const LegalFooter: React.FC<LegalFooterProps> = ({ onNavigate }) => {
         {/* Navigation links */}
         <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 font-mono text-[11px]">
           <button 
+            onClick={() => onNavigate('article')} 
+            className="text-foreground font-semibold hover:underline transition-all flex items-center gap-1"
+          >
+            <span>Algorithm Article</span>
+          </button>
+          <span>·</span>
+          <button 
             onClick={() => onNavigate('about')} 
-            className="hover:text-foreground transition-colors"
+            className="hover:text-foreground transition-colors cursor-pointer"
           >
             About
           </button>

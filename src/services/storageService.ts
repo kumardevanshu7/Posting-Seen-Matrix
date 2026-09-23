@@ -196,14 +196,21 @@ class StorageService {
    * Logs a new post.
    * Stored in Cloud Firestore and mirrored locally.
    */
-  public async addPost(post: Omit<Post, 'post_id' | 'views_24h' | 'check_in_completed_at'>): Promise<Post> {
+  public async addPost(post: Omit<Post, 'post_id' | 'views_24h' | 'check_in_completed_at'> & { views_24h?: number | null; check_in_completed_at?: string | null }): Promise<Post> {
     const uid = this.currentUserId || auth?.currentUser?.uid || undefined;
+    const viewsValue = post.views_24h !== undefined && post.views_24h !== null 
+      ? Math.max(0, Math.round(post.views_24h)) 
+      : null;
+    const completedAt = viewsValue !== null 
+      ? (post.check_in_completed_at || new Date().toISOString()) 
+      : null;
+
     const newPost: Post = {
       ...post,
       post_id: 'post_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36),
       user_id: uid,
-      views_24h: null,
-      check_in_completed_at: null,
+      views_24h: viewsValue,
+      check_in_completed_at: completedAt,
     };
 
     // Update local immediately for zero-lag UI

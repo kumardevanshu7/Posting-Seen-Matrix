@@ -21,16 +21,19 @@ import { PrivacyView } from './components/PrivacyView';
 import { TermsView } from './components/TermsView';
 import { DisclaimerView } from './components/DisclaimerView';
 import { ContactView } from './components/ContactView';
+import { ArticleView } from './components/ArticleView';
 import { LegalFooter } from './components/LegalFooter';
 import { RecommendationSkeleton, MatrixSkeleton, TimelineSkeleton } from './components/SkeletonLoader';
 import { isFirebaseConfigured, subscribeToAuth, logout } from './config/firebase';
 import { isSupabaseConfigured } from './config/supabase';
 import { User } from 'firebase/auth';
-import { Plus, LayoutDashboard, Compass, Zap } from 'lucide-react';
+import { Plus, LayoutDashboard, Compass, Zap, BookOpen } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [activePostType, setActivePostType] = useState<PostType>('public');
-  const [currentView, setCurrentView] = useState<'app' | 'landing' | 'explore' | 'about' | 'privacy' | 'terms' | 'disclaimer' | 'contact'>('landing');
+  const [currentView, setCurrentView] = useState<'app' | 'landing' | 'explore' | 'about' | 'privacy' | 'terms' | 'disclaimer' | 'contact' | 'article'>(() => {
+    return localStorage.getItem('time_matrix_authed') === 'true' ? 'app' : 'landing';
+  });
   const [isQuickPostOpen, setIsQuickPostOpen] = useState(false);
   const [isSmartSlotOpen, setIsSmartSlotOpen] = useState(false);
   const [initialSlotTimeUTC, setInitialSlotTimeUTC] = useState<string | undefined>(undefined);
@@ -47,7 +50,8 @@ export const App: React.FC = () => {
     const unsubAuth = subscribeToAuth(async (user) => {
       setCurrentUser(user);
       if (user) {
-        setCurrentView('app');
+        localStorage.setItem('time_matrix_authed', 'true');
+        setCurrentView(prev => prev === 'landing' ? 'app' : prev);
         try {
           const profile = await userService.getUserProfile(user.uid);
           setUserProfile(profile);
@@ -61,8 +65,10 @@ export const App: React.FC = () => {
           setIsOnboardingOpen(true);
         }
       } else {
+        localStorage.removeItem('time_matrix_authed');
         setUserProfile(null);
         setIsOnboardingOpen(false);
+        setCurrentView('landing');
       }
     });
     return unsubAuth;
@@ -128,6 +134,7 @@ export const App: React.FC = () => {
   };
 
   const handleSignOut = async () => {
+    localStorage.removeItem('time_matrix_authed');
     await logout();
     setCurrentView('landing');
   };
@@ -137,7 +144,10 @@ export const App: React.FC = () => {
 
   // Route Views
   if (currentView === 'landing') {
-    return <LandingView onEnterApp={() => setCurrentView('app')} currentUser={currentUser} />;
+    return <LandingView onEnterApp={() => setCurrentView('app')} currentUser={currentUser} onNavigate={setCurrentView} />;
+  }
+  if (currentView === 'article') {
+    return <ArticleView onNavigate={setCurrentView} />;
   }
   if (currentView === 'explore') {
     return <ExploreView onNavigate={setCurrentView} />;
@@ -252,11 +262,12 @@ export const App: React.FC = () => {
       {/* Mobile Bottom Dock */}
       <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-background/95 backdrop-blur-md border-t border-border px-3 py-2 flex items-center justify-around">
         <button
-          onClick={() => setCurrentView('landing')}
+          onClick={() => setCurrentView('article')}
           className="flex flex-col items-center gap-0.5 text-muted-foreground hover:text-foreground font-mono text-[10px]"
+          title="The Science & Architecture of Time Matrix"
         >
-          <Compass className="w-4 h-4" />
-          <span>Overview</span>
+          <BookOpen className="w-4 h-4" />
+          <span>Article</span>
         </button>
 
         <button
