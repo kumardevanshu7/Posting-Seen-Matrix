@@ -9,6 +9,8 @@ interface QuickPostModalProps {
   onClose: () => void;
   defaultPostType: PostType;
   defaultSlotSource?: SlotSource;
+  initialTimestampUTC?: string;
+  initialTitle?: string;
 }
 
 export const QuickPostModal: React.FC<QuickPostModalProps> = ({
@@ -16,11 +18,13 @@ export const QuickPostModal: React.FC<QuickPostModalProps> = ({
   onClose,
   defaultPostType,
   defaultSlotSource = 'user',
+  initialTimestampUTC,
+  initialTitle,
 }) => {
   const [postType, setPostType] = useState<PostType>(defaultPostType);
   const [slotSource, setSlotSource] = useState<SlotSource>(defaultSlotSource);
-  const [timestampUTC, setTimestampUTC] = useState<string>(getCurrentUTC());
-  const [title, setTitle] = useState<string>('');
+  const [timestampUTC, setTimestampUTC] = useState<string>(initialTimestampUTC || getCurrentUTC());
+  const [title, setTitle] = useState<string>(initialTitle || '');
   const [caption, setCaption] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
@@ -28,15 +32,15 @@ export const QuickPostModal: React.FC<QuickPostModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      setTimestampUTC(getCurrentUTC());
+      setTimestampUTC(initialTimestampUTC || getCurrentUTC());
       setPostType(defaultPostType);
       setSlotSource(defaultSlotSource);
-      setTitle('');
+      setTitle(initialTitle || '');
       setCaption('');
       setNotes('');
       setMediaPreview(null);
     }
-  }, [isOpen, defaultPostType, defaultSlotSource]);
+  }, [isOpen, defaultPostType, defaultSlotSource, initialTimestampUTC, initialTitle]);
 
   if (!isOpen) return null;
 

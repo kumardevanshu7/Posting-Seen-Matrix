@@ -11,6 +11,8 @@ import { HeatmapMatrix } from './components/HeatmapMatrix';
 import { ExternalSignalsSection } from './components/ExternalSignalsSection';
 import { PostTimeline } from './components/PostTimeline';
 import { QuickPostModal } from './components/QuickPostModal';
+import { SmartSlotModal } from './components/SmartSlotModal';
+import { SmartSlot } from './services/slotDistributionEngine';
 import { OnboardingModal } from './components/OnboardingModal';
 import { LandingView } from './components/LandingView';
 import { ExploreView } from './components/ExploreView';
@@ -24,12 +26,15 @@ import { RecommendationSkeleton, MatrixSkeleton, TimelineSkeleton } from './comp
 import { isFirebaseConfigured, subscribeToAuth, logout } from './config/firebase';
 import { isSupabaseConfigured } from './config/supabase';
 import { User } from 'firebase/auth';
-import { Plus, LayoutDashboard, Compass } from 'lucide-react';
+import { Plus, LayoutDashboard, Compass, Zap } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [activePostType, setActivePostType] = useState<PostType>('public');
   const [currentView, setCurrentView] = useState<'app' | 'landing' | 'explore' | 'about' | 'privacy' | 'terms' | 'disclaimer' | 'contact'>('landing');
   const [isQuickPostOpen, setIsQuickPostOpen] = useState(false);
+  const [isSmartSlotOpen, setIsSmartSlotOpen] = useState(false);
+  const [initialSlotTimeUTC, setInitialSlotTimeUTC] = useState<string | undefined>(undefined);
+  const [initialSlotTitle, setInitialSlotTitle] = useState<string | undefined>(undefined);
   const [defaultSlotSource, setDefaultSlotSource] = useState<SlotSource>('user');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -101,11 +106,24 @@ export const App: React.FC = () => {
 
   const handleOpenQuickPost = () => {
     setDefaultSlotSource('user');
+    setInitialSlotTimeUTC(undefined);
+    setInitialSlotTitle(undefined);
     setIsQuickPostOpen(true);
   };
 
   const handleUseRecommendedSlot = (_slot: TimeSlotRecommendation) => {
     setDefaultSlotSource('algorithm');
+    setInitialSlotTimeUTC(undefined);
+    setInitialSlotTitle(undefined);
+    setIsQuickPostOpen(true);
+  };
+
+  const handleSelectSmartSlot = (slot: SmartSlot, postType: PostType) => {
+    setActivePostType(postType);
+    setDefaultSlotSource('algorithm');
+    setInitialSlotTimeUTC(slot.timestampUTC);
+    setInitialSlotTitle(`${postType === 'trial' ? 'Trial' : 'Public'} Reel (${slot.timeIST})`);
+    setIsSmartSlotOpen(false);
     setIsQuickPostOpen(true);
   };
 
@@ -148,6 +166,7 @@ export const App: React.FC = () => {
         activePostType={activePostType}
         onPostTypeChange={setActivePostType}
         onOpenQuickPost={handleOpenQuickPost}
+        onOpenSmartSlots={() => setIsSmartSlotOpen(true)}
         publicCount={publicPosts.length}
         trialCount={trialPosts.length}
         pendingCheckInCount={pendingCheckInCount}
@@ -231,7 +250,7 @@ export const App: React.FC = () => {
       </main>
 
       {/* Mobile Bottom Dock */}
-      <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-background/95 backdrop-blur-md border-t border-border px-4 py-2 flex items-center justify-around">
+      <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-background/95 backdrop-blur-md border-t border-border px-3 py-2 flex items-center justify-around">
         <button
           onClick={() => setCurrentView('landing')}
           className="flex flex-col items-center gap-0.5 text-muted-foreground hover:text-foreground font-mono text-[10px]"
@@ -241,11 +260,20 @@ export const App: React.FC = () => {
         </button>
 
         <button
-          onClick={handleOpenQuickPost}
-          className="h-10 px-5 rounded-[6px] bg-primary text-primary-foreground font-medium text-xs flex items-center gap-1.5 shadow active:scale-[0.99]"
+          onClick={() => setIsSmartSlotOpen(true)}
+          className="flex flex-col items-center gap-0.5 text-amber-400 hover:text-amber-300 font-mono text-[10px]"
+          title="Smart Posting Timings"
         >
-          <Plus className="w-4 h-4" />
-          <span>Add Post</span>
+          <Zap className="w-4 h-4 text-amber-400 fill-amber-400/20" />
+          <span className="font-semibold text-foreground">Timings</span>
+        </button>
+
+        <button
+          onClick={handleOpenQuickPost}
+          className="h-9 px-3.5 rounded-[6px] bg-primary text-primary-foreground font-medium text-xs flex items-center gap-1 shadow active:scale-[0.99]"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          <span>Add</span>
         </button>
 
         <button
@@ -257,12 +285,27 @@ export const App: React.FC = () => {
         </button>
       </div>
 
+      {/* Smart Daily Slot Distribution Modal */}
+      <SmartSlotModal
+        isOpen={isSmartSlotOpen}
+        onClose={() => setIsSmartSlotOpen(false)}
+        posts={currentPosts}
+        initialPostType={activePostType}
+        onSelectSlot={handleSelectSmartSlot}
+      />
+
       {/* Quick Post Logging Modal */}
       <QuickPostModal
         isOpen={isQuickPostOpen}
-        onClose={() => setIsQuickPostOpen(false)}
+        onClose={() => {
+          setIsQuickPostOpen(false);
+          setInitialSlotTimeUTC(undefined);
+          setInitialSlotTitle(undefined);
+        }}
         defaultPostType={activePostType}
         defaultSlotSource={defaultSlotSource}
+        initialTimestampUTC={initialSlotTimeUTC}
+        initialTitle={initialSlotTitle}
       />
 
       {/* First-time Creator Onboarding Modal */}

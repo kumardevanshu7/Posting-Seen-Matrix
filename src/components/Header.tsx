@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Bell, LogOut, User as UserIcon } from 'lucide-react';
+import { Plus, Bell, LogOut, User as UserIcon, Zap } from 'lucide-react';
 import { PostType, EngineStage, UserProfile } from '../types';
 import { formatTimeIST, formatDateIST } from '../utils/dateUtils';
 import { User } from 'firebase/auth';
@@ -8,6 +8,7 @@ interface HeaderProps {
   activePostType: PostType;
   onPostTypeChange: (type: PostType) => void;
   onOpenQuickPost: () => void;
+  onOpenSmartSlots?: () => void;
   publicCount: number;
   trialCount: number;
   pendingCheckInCount: number;
@@ -24,6 +25,7 @@ export const Header: React.FC<HeaderProps> = ({
   activePostType,
   onPostTypeChange,
   onOpenQuickPost,
+  onOpenSmartSlots,
   publicCount,
   trialCount,
   pendingCheckInCount,
@@ -99,14 +101,26 @@ export const Header: React.FC<HeaderProps> = ({
             <span>{currentDateIST} • {currentIST}</span>
           </div>
 
-          {/* Mobile Add Post */}
-          <button
-            onClick={onOpenQuickPost}
-            className="md:hidden h-8 px-3 rounded-[6px] bg-primary text-primary-foreground text-xs font-medium active:scale-[0.99] transition-all flex items-center gap-1.5"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Add Post</span>
-          </button>
+          {/* Mobile Actions */}
+          <div className="flex md:hidden items-center gap-2">
+            {onOpenSmartSlots && (
+              <button
+                onClick={onOpenSmartSlots}
+                className="h-8 px-2.5 rounded-[6px] bg-secondary border border-border text-foreground hover:bg-accent text-xs font-medium active:scale-[0.99] transition-all flex items-center gap-1.5"
+                title="Smart Posting Timings"
+              >
+                <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400/20" />
+                <span className="font-mono text-[11px]">Timings</span>
+              </button>
+            )}
+            <button
+              onClick={onOpenQuickPost}
+              className="h-8 px-3 rounded-[6px] bg-primary text-primary-foreground text-xs font-medium active:scale-[0.99] transition-all flex items-center gap-1.5"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Post</span>
+            </button>
+          </div>
         </div>
 
         {/* Center: Tabs (Trial vs Public) */}
@@ -209,6 +223,18 @@ export const Header: React.FC<HeaderProps> = ({
             />
             <span className="hidden xl:inline">Explore</span>
           </button>
+
+          {/* Smart Timings Button */}
+          {onOpenSmartSlots && (
+            <button
+              onClick={onOpenSmartSlots}
+              className="h-8 px-3 rounded-[6px] bg-secondary border border-border text-foreground hover:bg-accent text-xs font-medium active:scale-[0.99] transition-all flex items-center gap-1.5 group shadow-xs"
+              title="Smart Posting Timing Recommendations for Today"
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400/20 group-hover:scale-110 transition-transform" />
+              <span className="font-medium">Smart Timings</span>
+            </button>
+          )}
 
           {/* Primary Action Button */}
           <button
