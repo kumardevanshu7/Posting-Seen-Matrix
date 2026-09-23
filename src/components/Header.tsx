@@ -59,194 +59,201 @@ export const Header: React.FC<HeaderProps> = ({
   }[currentStage];
 
   return (
-    <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border px-4 sm:px-6 py-2.5 transition-colors">
-      <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
-        
-        {/* Brand & Wordmark (With official Time Matrix Logo) */}
-        <div className="flex items-center justify-between w-full md:w-auto gap-4">
-          <div className="flex items-center gap-2.5">
-            <div 
-              onClick={() => onToggleView('app')}
-              className="relative flex items-center justify-center cursor-pointer group"
-              title="Time Matrix"
+    <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border transition-colors shadow-xs">
+      
+      {/* ============================================================ */}
+      {/* LAYER 1: Global Identity, Live Clock & Account Nav          */}
+      {/* ============================================================ */}
+      <div className="border-b border-border/50 px-4 sm:px-6 py-2">
+        <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
+          
+          {/* Left: Brand + Live IST Clock */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5">
+              <div 
+                onClick={() => onToggleView('app')}
+                className="relative flex items-center justify-center cursor-pointer group"
+                title="Time Matrix"
+              >
+                <img 
+                  src="/android-chrome-192x192.png" 
+                  alt="Time Matrix" 
+                  className="w-7 h-7 rounded-[7px] object-cover border border-border shadow-xs group-hover:scale-105 active:scale-95 transition-all" 
+                />
+              </div>
+              
+              <div className="flex flex-col">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-mono text-xs sm:text-sm font-semibold tracking-tight text-foreground leading-none">
+                    time matrix
+                  </span>
+                  <span className="text-[9px] font-mono uppercase tracking-sec-label px-1 py-0.2 rounded-[3px] bg-secondary border border-border text-muted-foreground">
+                    IST
+                  </span>
+                </div>
+                <button 
+                  onClick={() => onToggleView('explore')}
+                  className="text-[10px] text-muted-foreground hover:text-foreground font-mono leading-none mt-0.5 text-left flex items-center gap-1 transition-colors"
+                  title="Explore Arigato Labs"
+                >
+                  <span>by Arigato Labs</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Divider & Live IST Clock */}
+            <div className="hidden sm:flex items-center gap-3 pl-2 border-l border-border/60">
+              <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400/80 animate-pulse" />
+                <span>{currentDateIST} • {currentIST}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Creator Profile & Navigation */}
+          <div className="flex items-center gap-2">
+            {/* Creator Profile Chip & Sign Out */}
+            {currentUser ? (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={onEditProfile}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-[5px] bg-secondary/80 border border-border hover:border-input transition-colors group cursor-pointer"
+                  title="Edit Creator Profile"
+                >
+                  <UserIcon className="w-3 h-3 text-muted-foreground group-hover:text-foreground" />
+                  <span className="font-mono text-[11px] text-muted-foreground group-hover:text-foreground max-w-[130px] truncate">
+                    {userProfile?.name || currentUser.displayName || currentUser.email?.split('@')[0]}
+                  </span>
+                  {userProfile?.age && (
+                    <span className="text-[10px] text-muted-foreground font-mono">
+                      ({userProfile.age}y)
+                    </span>
+                  )}
+                </button>
+                <button
+                  onClick={onSignOut}
+                  className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer"
+                  title="Sign out"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : null}
+
+            {/* Divider */}
+            <div className="hidden sm:block h-3.5 w-px bg-border/60" />
+
+            {/* View Toggle: Overview / Console */}
+            <button
+              onClick={() => onToggleView(currentView === 'app' ? 'landing' : 'app')}
+              className="h-7 px-2 rounded-[5px] border border-input bg-transparent text-foreground hover:bg-accent text-[11px] font-mono transition-colors cursor-pointer"
+              title="Toggle Landing Page / App Console"
+            >
+              {currentView === 'app' ? 'Overview' : 'Console'}
+            </button>
+
+            {/* Explore Arigato Labs */}
+            <button
+              onClick={() => onToggleView('explore')}
+              className="h-7 px-2 rounded-[5px] border border-input bg-transparent text-foreground hover:bg-accent text-[11px] font-mono transition-colors flex items-center gap-1.5 cursor-pointer"
+              title="Explore Arigato Labs"
             >
               <img 
-                src="/android-chrome-192x192.png" 
-                alt="Time Matrix" 
-                className="w-8 h-8 rounded-[8px] object-cover border border-border shadow-sm group-hover:scale-105 active:scale-95 transition-all" 
+                src="/arigato-single-logo.png" 
+                alt="Arigato Labs" 
+                style={{ width: 15, height: 15, objectFit: 'contain' }}
               />
-            </div>
-            
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-xs sm:text-sm font-semibold tracking-tight text-foreground leading-none">
-                  time matrix
-                </span>
-                <span className="text-[9px] font-mono uppercase tracking-sec-label px-1 py-0.5 rounded-[4px] bg-secondary border border-border text-muted-foreground">
-                  IST
-                </span>
-              </div>
-              <button 
-                onClick={() => onToggleView('explore')}
-                className="text-[10px] text-muted-foreground hover:text-foreground font-mono leading-none mt-1 text-left flex items-center gap-1 transition-colors"
-                title="Explore Arigato Labs"
+              <span className="hidden md:inline">Explore</span>
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      {/* ============================================================ */}
+      {/* LAYER 2: Mode Switcher, Engine Stage & Primary Actions      */}
+      {/* ============================================================ */}
+      <div className="px-4 sm:px-6 py-2 bg-secondary/15">
+        <div className="max-w-6xl mx-auto flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
+          
+          {/* Left: Mode Switcher (Public vs Trial) + Stage + Pending Alerts */}
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Tabs */}
+            <div className="flex items-center p-0.5 rounded-[6px] bg-secondary border border-border shadow-xs">
+              <button
+                onClick={() => onPostTypeChange('public')}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-[5px] text-xs font-medium transition-all cursor-pointer ${
+                  activePostType === 'public'
+                    ? 'bg-foreground text-background shadow-xs font-semibold'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
               >
-                <span>by Arigato Labs</span>
+                <span>Public Reels</span>
+                <span className={`font-mono text-[10px] px-1 py-0.2 rounded-sm ${
+                  activePostType === 'public' ? 'bg-background/20 text-background' : 'text-muted-foreground'
+                }`}>
+                  {publicCount}
+                </span>
+              </button>
+
+              <button
+                onClick={() => onPostTypeChange('trial')}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-[5px] text-xs font-medium transition-all cursor-pointer ${
+                  activePostType === 'trial'
+                    ? 'bg-foreground text-background shadow-xs font-semibold'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <span>Trial Reels</span>
+                <span className={`font-mono text-[10px] px-1 py-0.2 rounded-sm ${
+                  activePostType === 'trial' ? 'bg-background/20 text-background' : 'text-muted-foreground'
+                }`}>
+                  {trialCount}
+                </span>
               </button>
             </div>
+
+            {/* Stage Chip */}
+            <span className="sec-label px-2.5 py-1 rounded-[5px] bg-secondary border border-border text-[10px]">
+              {stageLabel}
+            </span>
+
+            {/* Pending Check-in Alerts */}
+            {pendingCheckInCount > 0 && (
+              <span className="flex items-center gap-1.5 px-2 py-1 rounded-[5px] bg-secondary border border-border text-xs font-mono text-foreground" title="Pending 24h Check-ins">
+                <Bell className="w-3 h-3 text-amber-400" />
+                <span>{pendingCheckInCount}</span>
+              </span>
+            )}
           </div>
 
-          <div className="hidden sm:flex items-center gap-2 text-xs font-mono text-muted-foreground">
-            <span className="w-1.5 h-1.5 rounded-full bg-foreground/70" />
-            <span>{currentDateIST} • {currentIST}</span>
-          </div>
-
-          {/* Mobile Actions */}
-          <div className="flex md:hidden items-center gap-2">
+          {/* Right: Action Buttons (Smart Timings + Add Post) */}
+          <div className="flex items-center gap-2 ml-auto sm:ml-0">
+            {/* Smart Timings Button */}
             {onOpenSmartSlots && (
               <button
                 onClick={onOpenSmartSlots}
-                className="h-8 px-2.5 rounded-[6px] bg-secondary border border-border text-foreground hover:bg-accent text-xs font-medium active:scale-[0.99] transition-all flex items-center gap-1.5"
-                title="Smart Posting Timings"
+                className="h-8 px-3 rounded-[6px] bg-secondary hover:bg-secondary/80 border border-border text-foreground text-xs font-medium active:scale-[0.99] transition-all flex items-center gap-1.5 group shadow-xs cursor-pointer"
+                title="Smart Posting Timing Recommendations for Today"
               >
-                <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400/20" />
-                <span className="font-mono text-[11px]">Timings</span>
+                <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400/20 group-hover:scale-110 transition-transform" />
+                <span className="font-medium">Smart Timings</span>
               </button>
             )}
+
+            {/* Primary Action: Add Post */}
             <button
               onClick={onOpenQuickPost}
-              className="h-8 px-3 rounded-[6px] bg-primary text-primary-foreground text-xs font-medium active:scale-[0.99] transition-all flex items-center gap-1.5"
+              className="h-8 px-3.5 rounded-[6px] bg-primary text-primary-foreground text-xs font-medium hover:bg-[#e0e0e0] active:scale-[0.99] transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Add Post</span>
             </button>
           </div>
+
         </div>
-
-        {/* Center: Tabs (Trial vs Public) */}
-        <div className="flex items-center p-0.5 rounded-[6px] bg-secondary border border-border">
-          <button
-            onClick={() => onPostTypeChange('public')}
-            className={`flex items-center gap-2 px-3 py-1 rounded-[5px] text-xs font-medium transition-all ${
-              activePostType === 'public'
-                ? 'bg-foreground text-background shadow-none font-semibold'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <span>Public Reels</span>
-            <span className={`font-mono text-[10px] px-1 py-0.2 rounded-sm ${
-              activePostType === 'public' ? 'bg-background/20 text-background' : 'text-muted-foreground'
-            }`}>
-              {publicCount}
-            </span>
-          </button>
-
-          <button
-            onClick={() => onPostTypeChange('trial')}
-            className={`flex items-center gap-2 px-3 py-1 rounded-[5px] text-xs font-medium transition-all ${
-              activePostType === 'trial'
-                ? 'bg-foreground text-background shadow-none font-semibold'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <span>Trial Reels</span>
-            <span className={`font-mono text-[10px] px-1 py-0.2 rounded-sm ${
-              activePostType === 'trial' ? 'bg-background/20 text-background' : 'text-muted-foreground'
-            }`}>
-              {trialCount}
-            </span>
-          </button>
-        </div>
-
-        {/* Right Chrome */}
-        <div className="hidden md:flex items-center gap-2">
-          {/* Stage Mono Chip */}
-          <span className="sec-label px-2.5 py-1 rounded-[5px] bg-secondary border border-border">
-            {stageLabel}
-          </span>
-
-          {/* Pending Alerts */}
-          {pendingCheckInCount > 0 && (
-            <span className="flex items-center gap-1.5 px-2 py-1 rounded-[5px] bg-secondary border border-border text-xs font-mono text-foreground">
-              <Bell className="w-3 h-3 text-muted-foreground" />
-              <span>{pendingCheckInCount}</span>
-            </span>
-          )}
-
-          {/* User Auth Status & Creator Profile */}
-          {currentUser ? (
-            <div className="flex items-center gap-1.5 pl-1">
-              <button
-                onClick={onEditProfile}
-                className="flex items-center gap-1.5 px-2 py-1 rounded-[5px] bg-secondary border border-border hover:border-input transition-colors group"
-                title="Edit Creator Profile"
-              >
-                <UserIcon className="w-3 h-3 text-muted-foreground group-hover:text-foreground" />
-                <span className="font-mono text-[11px] text-muted-foreground group-hover:text-foreground max-w-[130px] truncate">
-                  {userProfile?.name || currentUser.displayName || currentUser.email?.split('@')[0]}
-                </span>
-                {userProfile?.age && (
-                  <span className="text-[10px] text-muted-foreground font-mono">
-                    ({userProfile.age}y)
-                  </span>
-                )}
-              </button>
-              <button
-                onClick={onSignOut}
-                className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                title="Sign out"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          ) : null}
-
-          {/* View Toggle: Overview / Console */}
-          <button
-            onClick={() => onToggleView(currentView === 'app' ? 'landing' : 'app')}
-            className="h-8 px-2.5 rounded-[6px] border border-input bg-transparent text-foreground hover:bg-accent text-xs font-mono transition-colors"
-            title="Toggle Landing Page / App Console"
-          >
-            {currentView === 'app' ? 'Overview' : 'Console'}
-          </button>
-
-          {/* Explore Arigato Labs */}
-          <button
-            onClick={() => onToggleView('explore')}
-            className="h-8 px-2.5 rounded-[6px] border border-input bg-transparent text-foreground hover:bg-accent text-xs font-mono transition-colors flex items-center gap-1.5"
-            title="Explore Arigato Labs"
-          >
-            <img 
-              src="/arigato-single-logo.png" 
-              alt="Arigato Labs" 
-              style={{ width: 17, height: 17, objectFit: 'contain' }}
-            />
-            <span className="hidden xl:inline">Explore</span>
-          </button>
-
-          {/* Smart Timings Button */}
-          {onOpenSmartSlots && (
-            <button
-              onClick={onOpenSmartSlots}
-              className="h-8 px-3 rounded-[6px] bg-secondary border border-border text-foreground hover:bg-accent text-xs font-medium active:scale-[0.99] transition-all flex items-center gap-1.5 group shadow-xs"
-              title="Smart Posting Timing Recommendations for Today"
-            >
-              <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400/20 group-hover:scale-110 transition-transform" />
-              <span className="font-medium">Smart Timings</span>
-            </button>
-          )}
-
-          {/* Primary Action Button */}
-          <button
-            onClick={onOpenQuickPost}
-            className="h-8 px-3.5 rounded-[6px] bg-primary text-primary-foreground text-xs font-medium hover:bg-[#e0e0e0] active:scale-[0.99] transition-all flex items-center gap-1.5"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Add Post</span>
-          </button>
-        </div>
-
       </div>
+
     </header>
   );
 };
