@@ -340,6 +340,47 @@ class StorageService {
     return true;
   }
 
+  /**
+   * Promotes a Trial reel to Public status.
+   * Resets posted_at to NOW so the 24h check-in timer starts fresh.
+   * PIN verification must be done at the UI layer before calling this.
+   */
+  public async promoteTrialToPublic(postId: string): Promise<boolean> {
+    const index = this.posts.findIndex(p => p.post_id === postId);
+    if (index === -1) return false;
+
+    const nowISO = new Date().toISOString();
+
+    this.posts[index] = {
+      ...this.posts[index],
+      post_type: 'public',
+      posted_at: nowISO,
+      views_24h: null,
+      check_in_completed_at: null,
+    };
+    this.persistLocal();
+
+    // Sync to Cloud Firestore if authenticated
+    const uid = this.currentUserId || auth?.currentUser?.uid;
+    if (isFirebaseConfigured() && db && uid) {
+      try {
+        const postRef = doc(db, 'posts', postId);
+        await updateDoc(postRef, {
+          post_type: 'public',
+          posted_at: nowISO,
+          views_24h: null,
+          check_in_completed_at: null,
+        });
+        console.log('[Firestore] Trial promoted to public in cloud:', postId);
+      } catch (err) {
+        console.error('[Firestore] Failed to promote trial to public in cloud:', err);
+      }
+    }
+
+    return true;
+  }
+
+
   public simulate24hElapsed(postId: string): void {
     // Strictly dev-only helper to protect production timestamp immutability (Spec Section 3.1)
     if (!import.meta.env.DEV) {

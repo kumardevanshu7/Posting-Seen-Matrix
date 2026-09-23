@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
 import { Post, PostType } from '../types';
 import { formatTimeIST, formatDateIST, getTimeBucket, TIME_BUCKET_CONFIG } from '../utils/dateUtils';
-import { Search, Trash2, Calendar, List, Layers, Clock, Eye } from 'lucide-react';
+import { Search, Trash2, Calendar, List, Clock, Eye, ExternalLink } from 'lucide-react';
 import { storageService } from '../services/storageService';
 
 interface PostTimelineProps {
   posts: Post[];
   postType: PostType;
   onRequestDeletePost?: (post: Post) => void;
+  onOpenTrialBoard?: () => void;
 }
 
-export const PostTimeline: React.FC<PostTimelineProps> = ({ posts, postType, onRequestDeletePost }) => {
+export const PostTimeline: React.FC<PostTimelineProps> = ({ posts, postType, onRequestDeletePost, onOpenTrialBoard }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'completed' | 'pending'>('all');
   const [viewFormat, setViewFormat] = useState<'date_grouped' | 'flat'>('date_grouped');
@@ -62,11 +63,22 @@ export const PostTimeline: React.FC<PostTimelineProps> = ({ posts, postType, onR
       {/* Header and Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="sec-label">Date-Wise Posting Log</span>
             <span className="font-mono text-[11px] text-muted-foreground">
               {filteredPosts.length} {postType} reels
             </span>
+            {/* Trial Board shortcut — only shows on trial tab */}
+            {postType === 'trial' && onOpenTrialBoard && (
+              <button
+                onClick={onOpenTrialBoard}
+                className="flex items-center gap-1 font-mono text-[11px] text-emerald-400 hover:text-emerald-300 underline underline-offset-2 transition-colors cursor-pointer"
+                title="Open full Trial Reels Board"
+              >
+                <ExternalLink className="w-3 h-3" />
+                <span>Open Trial Board</span>
+              </button>
+            )}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
             Chronological date-by-date journal of published reels and 24h verification outcomes

@@ -24,6 +24,7 @@ import { TermsView } from './components/TermsView';
 import { DisclaimerView } from './components/DisclaimerView';
 import { ContactView } from './components/ContactView';
 import { ArticleView } from './components/ArticleView';
+import { TrialReelsView } from './components/TrialReelsView';
 import { LegalFooter } from './components/LegalFooter';
 import { RecommendationSkeleton, MatrixSkeleton, TimelineSkeleton } from './components/SkeletonLoader';
 import { isFirebaseConfigured, subscribeToAuth, logout } from './config/firebase';
@@ -33,7 +34,7 @@ import { Plus, LayoutDashboard, Compass, Zap, BookOpen } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [activePostType, setActivePostType] = useState<PostType>('public');
-  const [currentView, setCurrentView] = useState<'app' | 'landing' | 'explore' | 'about' | 'privacy' | 'terms' | 'disclaimer' | 'contact' | 'article'>(() => {
+  const [currentView, setCurrentView] = useState<'app' | 'landing' | 'explore' | 'about' | 'privacy' | 'terms' | 'disclaimer' | 'contact' | 'article' | 'trial_board'>(() => {
     return localStorage.getItem('time_matrix_authed') === 'true' ? 'app' : 'landing';
   });
   const [isQuickPostOpen, setIsQuickPostOpen] = useState(false);
@@ -189,6 +190,41 @@ export const App: React.FC = () => {
   if (currentView === 'contact') {
     return <ContactView onNavigate={setCurrentView} />;
   }
+  if (currentView === 'trial_board') {
+    return (
+      <>
+        <TrialReelsView
+          trialPosts={trialPosts}
+          userProfile={userProfile}
+          onBack={() => { setCurrentView('app'); setActivePostType('trial'); }}
+          onRequestDeletePost={(post) => setDeleteTargetPost(post)}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          onRefresh={() => setVersion(v => v + 1)}
+        />
+        {/* PIN-Protected Post Deletion Modal — also needed on trial board */}
+        <DeleteConfirmModal
+          isOpen={!!deleteTargetPost}
+          onClose={() => setDeleteTargetPost(null)}
+          post={deleteTargetPost}
+          userProfile={userProfile}
+          onConfirmDelete={handleConfirmDeletePost}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+        />
+        {currentUser && (
+          <SettingsModal
+            isOpen={isSettingsOpen}
+            onClose={() => setIsSettingsOpen(false)}
+            currentUser={currentUser}
+            userProfile={userProfile}
+            onProfileUpdated={(updatedProfile) => {
+              setUserProfile(updatedProfile);
+              setVersion(v => v + 1);
+            }}
+          />
+        )}
+      </>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col font-sans pb-16 sm:pb-0">
@@ -278,6 +314,7 @@ export const App: React.FC = () => {
             posts={currentPosts}
             postType={activePostType}
             onRequestDeletePost={(post) => setDeleteTargetPost(post)}
+            onOpenTrialBoard={() => setCurrentView('trial_board')}
           />
         )}
 
