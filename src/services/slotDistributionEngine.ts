@@ -1,4 +1,4 @@
-import { Post, PostType, TimeBucket } from '../types';
+import { Post, PostType, TimeBucket, DayStats } from '../types';
 import { 
   getISTParts, 
   createUTCFromIST, 
@@ -64,8 +64,12 @@ const HOURLY_ENGAGEMENT_MAP: Record<number, { score: number; context: string; de
 
 /**
  * Returns customized hourly scores blending research baselines with the creator's historical stats.
+ * Uses precomputed DayStats and applies sample-size gating + Bayesian shrinkage to prevent noise skew.
  */
-function getPersonalizedHourlyScores(posts: Post[], dayIndex: number): Record<number, number> {
+function getPersonalizedHourlyScores(
+  dayStat: DayStats | undefined, 
+  dayIndex: number
+): Record<number, number> {
   const scores: Record<number, number> = {};
 
   for (let h = 0; h < 24; h++) {
@@ -80,34 +84,32 @@ function getPersonalizedHourlyScores(posts: Post[], dayIndex: number): Record<nu
     for (let h = 19; h <= 23; h++) scores[h] = Math.min(100, scores[h] + 5);
   }
 
-  // Creator's empirical data overlay
-  if (posts.length >= 3) {
-    try {
-      const stats = computeMatrixStats(posts);
-      const dayStat = stats.find(s => s.dayIndex === dayIndex);
-      if (dayStat && dayStat.totalCompletedPosts > 0 && dayStat.overallMedianViews > 0) {
-        const overallMed = dayStat.overallMedianViews;
-        const bucketHours: Record<TimeBucket, number[]> = {
-          morning: [6, 7, 8, 9, 10, 11],
-          afternoon: [12, 13, 14, 15, 16],
-          evening: [17, 18, 19, 20],
-          night: [21, 22, 23],
-        };
+  // Creator empirical overlay with sample-size gating and Bayesian shrinkage
+  if (dayStat && dayStat.totalCompletedPosts >= 3 && dayStat.overallMedianViews > 0) {
+    const overallMed = dayStat.overallMedianViews;
+    const bucketHours: Record<TimeBucket, number[]> = {
+      morning: [6, 7, 8, 9, 10, 11],
+      afternoon: [12, 13, 14, 15, 16],
+      evening: [17, 18, 19, 20],
+      night: [21, 22, 23],
+    };
 
-        (Object.keys(bucketHours) as TimeBucket[]).forEach(b => {
-          const bStat = dayStat.buckets[b];
-          if (bStat && bStat.completedCount > 0) {
-            const boost = Math.round(((bStat.medianViews - overallMed) / overallMed) * 15);
-            const clamped = Math.max(-10, Math.min(15, boost));
-            bucketHours[b].forEach(h => {
-              scores[h] = Math.max(15, Math.min(100, scores[h] + clamped));
-            });
-          }
+    (Object.keys(bucketHours) as TimeBucket[]).forEach(b => {
+      const bStat = dayStat.buckets[b];
+      // Require at least 2 completed posts in this specific bucket to prevent 1-reel noise skew
+      if (bStat && bStat.completedCount >= 2) {
+        // Bayesian shrinkage weight: dampens small sample sizes
+        // n=2 -> 0.40, n=3 -> 0.50, n=6 -> 0.67, n=12 -> 0.80
+        const shrinkageWeight = bStat.completedCount / (bStat.completedCount + 3);
+        const rawBoost = ((bStat.medianViews - overallMed) / overallMed) * 15;
+        const clampedRaw = Math.max(-10, Math.min(15, rawBoost));
+        const boosted = Math.round(clampedRaw * shrinkageWeight);
+
+        bucketHours[b].forEach(h => {
+          scores[h] = Math.max(15, Math.min(100, scores[h] + boosted));
         });
       }
-    } catch {
-      // Fallback cleanly to research baselines
-    }
+    });
   }
 
   return scores;
@@ -140,85 +142,55 @@ interface InternalSlotCandidate {
 }
 
 /**
- * Core Algorithm: Generates an intelligently partitioned, remainder-day schedule
- * strictly after the current IST time, respecting minimum anti-cannibalization buffers.
+ * Robust Sequential Allocation:
+ * Allocates slots sequentially across the daily viable window.
+ * Strictly guarantees that slot[i] - slot[i-1] >= minSpacingMinutes (zero buffer violation, guaranteed).
+ * Dynamically partitions the remaining day span so slots don't bunch at the start.
  */
-export function generateDailySlotPlan(params: {
-  postType: PostType;
-  count: number; // 1 to 6
-  nowUTC?: string;
-  posts: Post[];
-}): SmartSlotPlan {
-  const { postType, count, posts } = params;
-  const targetCount = Math.max(1, Math.min(6, Math.round(count)));
+function allocateSlotsForDay(params: {
+  dayLabel: 'Today' | 'Tomorrow';
+  count: number;
+  startBoundaryMin: number;
+  cutoffMin: number;
+  minSpacingMinutes: number;
+  scores: Record<number, number>;
+  year: number;
+  month: number;
+  date: number;
+}): InternalSlotCandidate[] {
+  const { dayLabel, count, startBoundaryMin, cutoffMin, minSpacingMinutes, scores, year, month, date } = params;
+  const candidates: InternalSlotCandidate[] = [];
+  let currentEarliest = startBoundaryMin;
 
-  // 1. Current IST Reference
-  const istNow = getISTParts(params.nowUTC || new Date());
-  const currentTotalMinutes = istNow.totalMinutes;
-  const currentAnchorIST = formatTimeIST(params.nowUTC || new Date());
+  for (let i = 0; i < count; i++) {
+    const slotsRemainingAfter = count - 1 - i;
+    // The latest possible minute this slot can take without starving subsequent slots of their buffer
+    const latestForThisSlot = cutoffMin - (slotsRemainingAfter * minSpacingMinutes);
+    const earliestForThisSlot = currentEarliest;
 
-  // Minimum anti-cannibalization spacing:
-  // Option A (Trial): 50 mins buffer
-  // Option B (Public): 80 mins buffer
-  const minSpacingMinutes = postType === 'trial' ? 50 : 80;
+    // Proportional window to spread slots naturally across remaining hours
+    const remainingSpan = Math.max(0, cutoffMin - earliestForThisSlot);
+    const targetDuration = remainingSpan / (count - i);
+    const winStart = earliestForThisSlot;
+    const winEnd = Math.max(winStart, Math.min(latestForThisSlot, Math.round(earliestForThisSlot + targetDuration)));
 
-  // Personalized quality scores for today and tomorrow
-  const todayScores = getPersonalizedHourlyScores(posts, istNow.dayIndex);
-  const tomorrowDayIndex = (istNow.dayIndex + 1) % 7;
-  const tomorrowScores = getPersonalizedHourlyScores(posts, tomorrowDayIndex);
-
-  // 2. Define viable window for TODAY
-  // Earliest viable slot: current time + 25 mins buffer (gives creator prep/upload window)
-  const earliestAllowedMinToday = currentTotalMinutes + 25;
-  // Late night cutoff: 23:50 (11:50 PM IST) to prevent posting in the 1-5 AM dead zone
-  const cutoffMinToday = 23 * 60 + 50;
-
-  const availableSpanToday = cutoffMinToday - earliestAllowedMinToday;
-
-  // Determine how many reels can comfortably fit today
-  let numReelsToday = 0;
-  if (availableSpanToday >= 0) {
-    for (let k = targetCount; k >= 1; k--) {
-      const minRequiredSpan = (k - 1) * minSpacingMinutes;
-      if (availableSpanToday >= minRequiredSpan) {
-        numReelsToday = k;
-        break;
-      }
-    }
-  }
-
-  const selectedCandidates: InternalSlotCandidate[] = [];
-
-  // Helper to pick the best natural slot within an assigned target window [winStart, winEnd]
-  const pickBestSlotInWindow = (
-    winStart: number,
-    winEnd: number,
-    scores: Record<number, number>,
-    dayLabel: 'Today' | 'Tomorrow',
-    year: number,
-    month: number,
-    date: number,
-    prevSlotMin?: number
-  ): InternalSlotCandidate => {
     let bestCandidate: InternalSlotCandidate | null = null;
     let highestScore = -1;
 
-    // Search through all natural minutes within this target window
+    // Search through natural minutes in [winStart, winEnd]
     const startH = Math.floor(winStart / 60);
     const endH = Math.floor(winEnd / 60);
 
     for (let h = startH; h <= endH; h++) {
       for (const m of NATURAL_MINUTES) {
         const candidateTotalMin = h * 60 + m;
+        // Strictly within the search window:
+        // Guaranteed: candidateTotalMin >= winStart = earliestForThisSlot >= prevSlot + minSpacingMinutes
+        // And candidateTotalMin <= winEnd <= latestForThisSlot
         if (candidateTotalMin < winStart || candidateTotalMin > winEnd) continue;
 
-        // Must respect minimum buffer spacing from previous slot
-        if (prevSlotMin !== undefined && (candidateTotalMin - prevSlotMin) < minSpacingMinutes) {
-          continue;
-        }
-
         const baseScore = scores[h] || 50;
-        // Subtle natural minute preference (e.g. :15 and :25 are high-converting notification times)
+        // Subtle natural preference for top notification times
         const minBonus = (m === 15 || m === 25) ? 3 : (m === 35 || m === 45 ? 2 : 1);
         const totalScore = Math.min(100, baseScore + minBonus);
 
@@ -241,11 +213,13 @@ export function generateDailySlotPlan(params: {
       }
     }
 
-    // Fallback if strict spacing eliminated all natural candidates: pick safe forward step
+    // Fallback if strict spacing and natural minutes filter yielded no candidate in this window:
+    // Pick the midpoint of [winStart, winEnd], strictly bounded by earliestForThisSlot and latestForThisSlot.
+    // By definition, fallbackTotalMin >= earliestForThisSlot, so spacing is NEVER violated!
     if (!bestCandidate) {
       const fallbackTotalMin = Math.min(
-        winEnd,
-        prevSlotMin !== undefined ? prevSlotMin + minSpacingMinutes : winStart
+        latestForThisSlot,
+        Math.max(earliestForThisSlot, Math.round((winStart + winEnd) / 2))
       );
       const h = Math.floor(fallbackTotalMin / 60);
       const m = fallbackTotalMin % 60;
@@ -265,33 +239,85 @@ export function generateDailySlotPlan(params: {
       };
     }
 
-    return bestCandidate;
-  };
+    candidates.push(bestCandidate);
+    // Crucial step: advance currentEarliest by at least minSpacingMinutes from the chosen slot
+    currentEarliest = bestCandidate.totalMinutes + minSpacingMinutes;
+  }
 
-  // 3. Allocate Today's Slots via Proportional Zone Partitioning
-  if (numReelsToday > 0) {
-    const zoneDuration = availableSpanToday / numReelsToday;
+  return candidates;
+}
 
-    for (let i = 0; i < numReelsToday; i++) {
-      const zoneStart = Math.round(earliestAllowedMinToday + i * zoneDuration);
-      const zoneEnd = Math.round(earliestAllowedMinToday + (i + 1) * zoneDuration);
-      const prevMin = selectedCandidates.length > 0 
-        ? selectedCandidates[selectedCandidates.length - 1].totalMinutes 
-        : undefined;
+/**
+ * Core Algorithm: Generates an intelligently partitioned, remainder-day schedule
+ * strictly after the current IST time, respecting minimum anti-cannibalization buffers.
+ */
+export function generateDailySlotPlan(params: {
+  postType: PostType;
+  count: number; // 1 to 6
+  nowUTC?: string;
+  posts: Post[];
+}): SmartSlotPlan {
+  const { postType, count, posts } = params;
+  const targetCount = Math.max(1, Math.min(6, Math.round(count)));
 
-      const chosen = pickBestSlotInWindow(
-        zoneStart,
-        zoneEnd,
-        todayScores,
-        'Today',
-        istNow.year,
-        istNow.month,
-        istNow.date,
-        prevMin
-      );
+  // 1. Current IST Reference
+  const istNow = getISTParts(params.nowUTC || new Date());
+  const currentTotalMinutes = istNow.totalMinutes;
+  const currentAnchorIST = formatTimeIST(params.nowUTC || new Date());
 
-      selectedCandidates.push(chosen);
+  // Minimum anti-cannibalization spacing:
+  // Option A (Trial): 50 mins buffer
+  // Option B (Public): 80 mins buffer
+  const minSpacingMinutes = postType === 'trial' ? 50 : 80;
+
+  // Single precomputation of matrix stats on completed posts (avoids redundant recalculation)
+  const completedPosts = posts.filter(p => p.views_24h !== null && p.views_24h !== undefined);
+  const matrixStats = completedPosts.length >= 3 ? computeMatrixStats(completedPosts) : [];
+
+  const todayDayStat = matrixStats.find(s => s.dayIndex === istNow.dayIndex);
+  const tomorrowDayIndex = (istNow.dayIndex + 1) % 7;
+  const tomorrowDayStat = matrixStats.find(s => s.dayIndex === tomorrowDayIndex);
+
+  // Personalized quality scores for today and tomorrow with sample-size gating
+  const todayScores = getPersonalizedHourlyScores(todayDayStat, istNow.dayIndex);
+  const tomorrowScores = getPersonalizedHourlyScores(tomorrowDayStat, tomorrowDayIndex);
+
+  // 2. Define viable window for TODAY
+  // Earliest viable slot: current time + 25 mins buffer (gives creator prep/upload window)
+  const earliestAllowedMinToday = currentTotalMinutes + 25;
+  // Late night cutoff: 23:50 (11:50 PM IST) to prevent posting in the 1-5 AM dead zone
+  const cutoffMinToday = 23 * 60 + 50;
+
+  const availableSpanToday = cutoffMinToday - earliestAllowedMinToday;
+
+  // Determine how many reels can comfortably fit today without violating minSpacingMinutes
+  let numReelsToday = 0;
+  if (availableSpanToday >= 0) {
+    for (let k = targetCount; k >= 1; k--) {
+      const minRequiredSpan = (k - 1) * minSpacingMinutes;
+      if (availableSpanToday >= minRequiredSpan) {
+        numReelsToday = k;
+        break;
+      }
     }
+  }
+
+  const selectedCandidates: InternalSlotCandidate[] = [];
+
+  // 3. Allocate Today's Slots via Sequential Guaranteed-Spacing Allocation
+  if (numReelsToday > 0) {
+    const todayCandidates = allocateSlotsForDay({
+      dayLabel: 'Today',
+      count: numReelsToday,
+      startBoundaryMin: earliestAllowedMinToday,
+      cutoffMin: cutoffMinToday,
+      minSpacingMinutes,
+      scores: todayScores,
+      year: istNow.year,
+      month: istNow.month,
+      date: istNow.date,
+    });
+    selectedCandidates.push(...todayCandidates);
   }
 
   // 4. Allocate Tomorrow's Spillover Slots if needed
@@ -302,36 +328,26 @@ export function generateDailySlotPlan(params: {
   if (neededTomorrow > 0) {
     hasSpillover = true;
 
-    // Tomorrow date parts
-    const tomorrowRef = new Date(Date.UTC(istNow.year, istNow.month, istNow.date + 1));
-    const tomParts = getISTParts(tomorrowRef);
+    // Exact tomorrow date in IST using createUTCFromIST to guarantee timezone safety and month rollover
+    const tomorrowUtcIso = createUTCFromIST(istNow.year, istNow.month, istNow.date + 1, 12, 0);
+    const tomParts = getISTParts(tomorrowUtcIso);
 
     // Tomorrow prime windows: 09:15 AM (555m) to 22:30 PM (1350m)
     const tomStartMin = 9 * 60 + 15;
     const tomEndMin = 22 * 60 + 30;
-    const tomAvailableSpan = tomEndMin - tomStartMin;
-    const tomZoneDuration = tomAvailableSpan / neededTomorrow;
 
-    let prevTomMin: number | undefined = undefined;
-
-    for (let j = 0; j < neededTomorrow; j++) {
-      const zoneStart = Math.round(tomStartMin + j * tomZoneDuration);
-      const zoneEnd = Math.round(tomStartMin + (j + 1) * tomZoneDuration);
-
-      const chosen = pickBestSlotInWindow(
-        zoneStart,
-        zoneEnd,
-        tomorrowScores,
-        'Tomorrow',
-        tomParts.year,
-        tomParts.month,
-        tomParts.date,
-        prevTomMin
-      );
-
-      selectedCandidates.push(chosen);
-      prevTomMin = chosen.totalMinutes;
-    }
+    const tomorrowCandidates = allocateSlotsForDay({
+      dayLabel: 'Tomorrow',
+      count: neededTomorrow,
+      startBoundaryMin: tomStartMin,
+      cutoffMin: tomEndMin,
+      minSpacingMinutes,
+      scores: tomorrowScores,
+      year: tomParts.year,
+      month: tomParts.month,
+      date: tomParts.date,
+    });
+    selectedCandidates.push(...tomorrowCandidates);
 
     spilloverMessage = numReelsToday === 0
       ? `It is currently late night (${currentAnchorIST}). To protect your reach from the 1 AM – 5 AM dead zone, all ${targetCount} reels have been scheduled across tomorrow's prime retention windows.`
