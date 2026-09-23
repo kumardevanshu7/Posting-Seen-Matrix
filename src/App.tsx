@@ -22,7 +22,7 @@ import { RecommendationSkeleton, MatrixSkeleton, TimelineSkeleton } from './comp
 import { isFirebaseConfigured, subscribeToAuth, logout } from './config/firebase';
 import { isSupabaseConfigured } from './config/supabase';
 import { User } from 'firebase/auth';
-import { Copy, Check, Plus, LayoutDashboard, Compass } from 'lucide-react';
+import { Plus, LayoutDashboard, Compass } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [activePostType, setActivePostType] = useState<PostType>('public');
@@ -32,7 +32,6 @@ export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [, setVersion] = useState(0);
-  const [copiedEnv, setCopiedEnv] = useState(false);
 
   // Subscribe to Firebase Auth changes
   useEffect(() => {
@@ -46,17 +45,23 @@ export const App: React.FC = () => {
     return unsubAuth;
   }, []);
 
-  // Subscribe to storage updates & simulate brief initial skeleton load
+  // Subscribe to storage updates & handle skeleton loading
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 600);
+    let mounted = true;
+    const safetyTimer = setTimeout(() => {
+      if (mounted) setIsLoading(false);
+    }, 400);
 
     const unsubscribe = storageService.subscribe(() => {
-      setVersion(v => v + 1);
+      if (mounted) {
+        setVersion(v => v + 1);
+        setIsLoading(false);
+      }
     });
+
     return () => {
-      clearTimeout(timer);
+      mounted = false;
+      clearTimeout(safetyTimer);
       unsubscribe();
     };
   }, []);
@@ -93,23 +98,6 @@ export const App: React.FC = () => {
 
   const firebaseReady = isFirebaseConfigured();
   const supabaseReady = isSupabaseConfigured();
-
-  const handleCopyEnv = () => {
-    const envText = `# Time Matrix Vercel / Production Environment
-VITE_SUPABASE_URL=https://ubqzstihdfjhfmmdbrpt.supabase.co
-VITE_SUPABASE_ANON_KEY=sb_publishable_3zGJL5KdsWcVUP6RqOfe4g_Ih4ltcUz
-VITE_SUPABASE_BUCKET_NAME=reel-thumbnails
-VITE_FIREBASE_API_KEY=AIzaSyARPZ1FHUHgNkvUFF8l5xgdbR4x47iaO0U
-VITE_FIREBASE_AUTH_DOMAIN=pro10-posting-seen-matrix.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=pro10-posting-seen-matrix
-VITE_FIREBASE_STORAGE_BUCKET=pro10-posting-seen-matrix.firebasestorage.app
-VITE_FIREBASE_MESSAGING_SENDER_ID=753647913967
-VITE_FIREBASE_APP_ID=1:753647913967:web:51be487d881dc6a80d041a
-VITE_FIREBASE_MEASUREMENT_ID=G-PTZ5DJ9PZ4`;
-    navigator.clipboard.writeText(envText);
-    setCopiedEnv(true);
-    setTimeout(() => setCopiedEnv(false), 2000);
-  };
 
   // Route Views
   if (currentView === 'landing') {
@@ -158,23 +146,20 @@ VITE_FIREBASE_MEASUREMENT_ID=G-PTZ5DJ9PZ4`;
         {/* Integration Status Bar */}
         <div className="rounded-[6px] px-3.5 py-2.5 bg-card border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
           <div className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+            <span className={`w-1.5 h-1.5 rounded-full ${firebaseReady ? 'bg-emerald-400' : 'bg-amber-400'}`} />
             <span className="font-mono text-muted-foreground">
-              Storage: <span className="text-foreground">Firestore Cloud</span> (real-time sync)
+              Storage: <span className="text-foreground">{firebaseReady ? 'Firestore Cloud' : 'Local Storage'}</span> ({firebaseReady ? 'real-time sync' : 'offline fallback'})
             </span>
           </div>
 
           <div className="flex items-center gap-2.5 font-mono text-[11px] text-muted-foreground">
-            <span className="text-emerald-400">Firebase: connected</span>
+            <span className={firebaseReady ? 'text-emerald-400' : 'text-amber-400'}>
+              Firebase: {firebaseReady ? 'connected' : 'local mode'}
+            </span>
             <span>•</span>
-            <span className="text-emerald-400">Supabase: connected</span>
-            <button
-              onClick={handleCopyEnv}
-              className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
-              title="Copy all Vercel environment variables"
-            >
-              {copiedEnv ? <Check className="w-3.5 h-3.5 text-foreground" /> : <Copy className="w-3.5 h-3.5" />}
-            </button>
+            <span className={supabaseReady ? 'text-emerald-400' : 'text-amber-400'}>
+              Supabase: {supabaseReady ? 'connected' : 'local mode'}
+            </span>
           </div>
         </div>
 
