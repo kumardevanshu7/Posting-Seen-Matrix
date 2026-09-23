@@ -52,7 +52,18 @@ export const App: React.FC = () => {
       if (user) {
         localStorage.setItem('time_matrix_authed', 'true');
         setCurrentView(prev => prev === 'landing' ? 'app' : prev);
+
+        // Optimistic zero-latency display from local cache
+        const cached = userService.getCachedProfile(user.uid);
+        if (cached) {
+          setUserProfile(cached);
+          if (cached.onboarding_completed) {
+            setIsOnboardingOpen(false);
+          }
+        }
+
         try {
+          // Fresh fetch from Cloud Firestore (stale-while-revalidate)
           const profile = await userService.getUserProfile(user.uid);
           setUserProfile(profile);
           if (!profile || !profile.onboarding_completed) {
@@ -62,7 +73,9 @@ export const App: React.FC = () => {
           }
         } catch (e) {
           console.error('Error checking profile:', e);
-          setIsOnboardingOpen(true);
+          if (!cached || !cached.onboarding_completed) {
+            setIsOnboardingOpen(true);
+          }
         }
       } else {
         localStorage.removeItem('time_matrix_authed');

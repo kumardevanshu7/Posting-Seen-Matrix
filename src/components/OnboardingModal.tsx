@@ -85,8 +85,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
       onComplete(profile);
     } catch (err: any) {
       console.error('Failed to complete onboarding:', err);
-      // Even if cloud save fails momentarily, local cache works and allows continuing
-      onComplete(profile);
+      setErrorMsg('Failed to save profile to cloud. Please check your connection and try again.');
     } finally {
       setIsSaving(false);
     }
