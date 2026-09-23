@@ -6,6 +6,9 @@ export default defineConfig({
   server: {
     port: 3000,
     open: false,
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+    },
     watch: {
       ignored: ['**/brand-right/**', '**/.git/**']
     }
