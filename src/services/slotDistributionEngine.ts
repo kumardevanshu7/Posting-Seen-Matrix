@@ -1,5 +1,10 @@
 import { Post, PostType, TimeBucket } from '../types';
-import { getISTDate, getTimeBucket, getISTDayOfWeek, formatTimeIST } from '../utils/dateUtils';
+import { 
+  getISTParts, 
+  createUTCFromIST, 
+  formatTimeIST, 
+  getTimeBucket 
+} from '../utils/dateUtils';
 import { computeMatrixStats } from './predictionEngine';
 
 export interface SmartSlot {
@@ -11,6 +16,7 @@ export interface SmartSlot {
   qualityTier: 'peak' | 'prime' | 'good' | 'fallback';
   qualityScore: number; // 0 - 100
   rationale: string;
+  windowContext: string;
 }
 
 export interface SmartSlotPlan {
@@ -20,38 +26,40 @@ export interface SmartSlotPlan {
   tomorrowCount: number;
   hasSpillover: boolean;
   spilloverMessage?: string;
+  executiveSummary: string;
+  currentAnchorIST: string;
   slots: SmartSlot[];
 }
 
 /**
- * Baseline hourly quality score for Instagram Reels (00:00 to 23:00 IST).
- * Derived from empirical social benchmarks (Lunch spike 12-2 PM, Evening peak 6:30-9 PM, Dead zone 1-5 AM).
+ * Hourly research engagement score (00:00 to 23:00 IST).
+ * Reflects Indian mobile browsing habits and Instagram short-form video retention.
  */
-const HOURLY_RESEARCH_BASELINES: Record<number, { score: number; rationale: string }> = {
-  0: { score: 32, rationale: 'Late night winding down • Low engagement velocity' },
-  1: { score: 10, rationale: 'Dead zone • Algorithm penalty floor' },
-  2: { score: 10, rationale: 'Dead zone • Minimum audience activity' },
-  3: { score: 10, rationale: 'Dead zone • Lowest impression window' },
-  4: { score: 12, rationale: 'Pre-dawn • Minimal active reach' },
-  5: { score: 25, rationale: 'Early morning • Sporadic early risers' },
-  6: { score: 45, rationale: 'Morning wake-up • Initial mobile check-in' },
-  7: { score: 52, rationale: 'Morning routine • Light casual scrolling' },
-  8: { score: 58, rationale: 'Commute start • Short-form video appetite' },
-  9: { score: 68, rationale: 'Mid-morning break • Work & study transitions' },
-  10: { score: 70, rationale: 'Morning focus break • High swipe engagement' },
-  11: { score: 72, rationale: 'Pre-lunch pickup • Steady audience build-up' },
-  12: { score: 84, rationale: 'Lunch spike • High mobile activity across audiences' },
-  13: { score: 86, rationale: 'Mid-lunch peak • Strong retention for short hooks' },
-  14: { score: 78, rationale: 'Post-lunch transition • Stable afternoon engagement' },
-  15: { score: 65, rationale: 'Afternoon tea lull • Moderate reach velocity' },
-  16: { score: 68, rationale: 'Late afternoon • Audience returning to mobile' },
-  17: { score: 82, rationale: 'Work wrap-up & commute • Surge in recreational scrolling' },
-  18: { score: 92, rationale: 'Early evening peak • Prime reel discovery window' },
-  19: { score: 98, rationale: 'Maximum prime window • Highest daily retention & shares' },
-  20: { score: 96, rationale: 'Peak prime time • High engagement across all age groups' },
-  21: { score: 85, rationale: 'Post-dinner relaxation • Strong watch time completion' },
-  22: { score: 74, rationale: 'Night leisure scroll • Good for thoughtful or deep hooks' },
-  23: { score: 50, rationale: 'Late night drop-off • Reduced initial 30-min velocity' },
+const HOURLY_ENGAGEMENT_MAP: Record<number, { score: number; context: string; defaultRationale: string }> = {
+  0:  { score: 38, context: 'Midnight Transition', defaultRationale: 'Late-night winding down • Lower immediate velocity' },
+  1:  { score: 10, context: 'Dead Zone', defaultRationale: 'Algorithm penalty zone • Minimal active impressions' },
+  2:  { score: 10, context: 'Dead Zone', defaultRationale: 'Dead zone • Deep sleep inactivity' },
+  3:  { score: 10, context: 'Dead Zone', defaultRationale: 'Dead zone • Lowest impression floor' },
+  4:  { score: 15, context: 'Pre-Dawn', defaultRationale: 'Pre-dawn • Minimal active reach' },
+  5:  { score: 30, context: 'Early Morning', defaultRationale: 'Early risers • Casual initial check-in' },
+  6:  { score: 50, context: 'Wake-Up Window', defaultRationale: 'Morning wake-up • Initial mobile scroll' },
+  7:  { score: 62, context: 'Morning Routine', defaultRationale: 'Breakfast & prep • Light browsing velocity' },
+  8:  { score: 72, context: 'Morning Commute', defaultRationale: 'Transit & college start • Short-form appetite' },
+  9:  { score: 82, context: 'Morning Work Break', defaultRationale: 'Work/study pause • High initial hook discovery' },
+  10: { score: 78, context: 'Mid-Morning Focus', defaultRationale: 'Mid-morning break • Steady reel browsing' },
+  11: { score: 76, context: 'Pre-Lunch Buildup', defaultRationale: 'Pre-lunch transition • Audience activity rising' },
+  12: { score: 88, context: 'Lunch Start', defaultRationale: 'Lunch hour • Rapid mobile usage spike across demographics' },
+  13: { score: 92, context: 'Mid-Lunch Peak', defaultRationale: 'Mid-lunch peak • Maximum daytime retention and shares' },
+  14: { score: 82, context: 'Post-Lunch Rest', defaultRationale: 'Post-lunch relaxation • Stable watch completion' },
+  15: { score: 74, context: 'Afternoon Slump', defaultRationale: 'Afternoon pause • Moderate swipe volume' },
+  16: { score: 78, context: 'Pre-Evening Pickup', defaultRationale: 'Pre-evening work transition • Browsing pickups' },
+  17: { score: 90, context: 'Evening Tea Break', defaultRationale: 'Evening tea & commute • High hook test velocity' },
+  18: { score: 88, context: 'Early Prime Transit', defaultRationale: 'Transit home • Strong feed consumption' },
+  19: { score: 95, context: 'Prime Dinner Window', defaultRationale: 'Prime evening surge • High retention & viral velocity' },
+  20: { score: 98, context: 'Peak Prime Time', defaultRationale: 'Peak prime hour • Maximum daily watch time & shares' },
+  21: { score: 92, context: 'Post-Dinner Leisure', defaultRationale: 'Post-dinner relaxation • High video completion rate' },
+  22: { score: 86, context: 'Night Bedtime Scroll', defaultRationale: 'Bedtime leisure scroll • Thoughtful and narrative hooks' },
+  23: { score: 78, context: 'Late Night Wind-Down', defaultRationale: 'Late evening leisure • Excellent for high-curiosity reels' },
 };
 
 /**
@@ -60,29 +68,25 @@ const HOURLY_RESEARCH_BASELINES: Record<number, { score: number; rationale: stri
 function getPersonalizedHourlyScores(posts: Post[], dayIndex: number): Record<number, number> {
   const scores: Record<number, number> = {};
 
-  // Initialize with baseline
   for (let h = 0; h < 24; h++) {
-    scores[h] = HOURLY_RESEARCH_BASELINES[h].score;
+    scores[h] = HOURLY_ENGAGEMENT_MAP[h].score;
   }
 
-  // Day of week modifiers (Wednesday / Tuesday / Thursday mid-week boosts)
-  if (dayIndex === 3 || dayIndex === 2) {
-    // Tue, Wed prime boost
-    for (let h = 17; h <= 21; h++) scores[h] = Math.min(100, scores[h] + 4);
+  // Mid-week prime boosts (Tuesday, Wednesday, Thursday)
+  if (dayIndex === 2 || dayIndex === 3 || dayIndex === 4) {
+    for (let h = 17; h <= 22; h++) scores[h] = Math.min(100, scores[h] + 4);
   } else if (dayIndex === 0) {
-    // Sunday night surge (7 PM - 10 PM)
-    for (let h = 19; h <= 22; h++) scores[h] = Math.min(100, scores[h] + 5);
+    // Sunday night engagement surge
+    for (let h = 19; h <= 23; h++) scores[h] = Math.min(100, scores[h] + 5);
   }
 
   // Creator's empirical data overlay
   if (posts.length >= 3) {
     try {
       const stats = computeMatrixStats(posts);
-      const todayStats = stats.find(s => s.dayIndex === dayIndex);
-      if (todayStats && todayStats.totalCompletedPosts > 0) {
-        const overallMed = todayStats.overallMedianViews;
-
-        // Bucket to hour ranges
+      const dayStat = stats.find(s => s.dayIndex === dayIndex);
+      if (dayStat && dayStat.totalCompletedPosts > 0 && dayStat.overallMedianViews > 0) {
+        const overallMed = dayStat.overallMedianViews;
         const bucketHours: Record<TimeBucket, number[]> = {
           morning: [6, 7, 8, 9, 10, 11],
           afternoon: [12, 13, 14, 15, 16],
@@ -91,212 +95,283 @@ function getPersonalizedHourlyScores(posts: Post[], dayIndex: number): Record<nu
         };
 
         (Object.keys(bucketHours) as TimeBucket[]).forEach(b => {
-          const bStat = todayStats.buckets[b];
-          if (bStat && bStat.completedCount > 0 && overallMed > 0) {
-            const performanceBoost = Math.round(((bStat.medianViews - overallMed) / overallMed) * 15);
-            const clampedBoost = Math.max(-10, Math.min(15, performanceBoost));
-
+          const bStat = dayStat.buckets[b];
+          if (bStat && bStat.completedCount > 0) {
+            const boost = Math.round(((bStat.medianViews - overallMed) / overallMed) * 15);
+            const clamped = Math.max(-10, Math.min(15, boost));
             bucketHours[b].forEach(h => {
-              scores[h] = Math.max(15, Math.min(100, scores[h] + clampedBoost));
+              scores[h] = Math.max(15, Math.min(100, scores[h] + clamped));
             });
           }
         });
       }
     } catch {
-      // Fallback to baseline if stats computation fails
+      // Fallback cleanly to research baselines
     }
   }
 
   return scores;
 }
 
-/**
- * Maps a numerical quality score to a tier.
- */
 function getQualityTier(score: number): 'peak' | 'prime' | 'good' | 'fallback' {
-  if (score >= 88) return 'peak';
-  if (score >= 75) return 'prime';
-  if (score >= 60) return 'good';
+  if (score >= 90) return 'peak';
+  if (score >= 80) return 'prime';
+  if (score >= 68) return 'good';
   return 'fallback';
 }
 
 /**
- * Generates an on-demand, spaced posting schedule for N reels in the remaining hours of today.
- * If today's viable hours are exhausted, spills over gracefully to tomorrow.
+ * Natural minute choices for human posting rather than robotic times:
+ * 15, 20, 25, 35, 45, 50
+ */
+const NATURAL_MINUTES = [15, 20, 25, 35, 45, 50];
+
+interface InternalSlotCandidate {
+  dayLabel: 'Today' | 'Tomorrow';
+  year: number;
+  month: number;
+  date: number;
+  hour: number;
+  minute: number;
+  totalMinutes: number;
+  score: number;
+  rationale: string;
+  context: string;
+}
+
+/**
+ * Core Algorithm: Generates an intelligently partitioned, remainder-day schedule
+ * strictly after the current IST time, respecting minimum anti-cannibalization buffers.
  */
 export function generateDailySlotPlan(params: {
   postType: PostType;
   count: number; // 1 to 6
-  nowUTC?: string; // Optional reference, defaults to now
+  nowUTC?: string;
   posts: Post[];
 }): SmartSlotPlan {
   const { postType, count, posts } = params;
   const targetCount = Math.max(1, Math.min(6, Math.round(count)));
-  const now = params.nowUTC ? new Date(params.nowUTC) : new Date();
 
-  // Current IST Date & Time
-  const istNow = getISTDate(now.toISOString());
-  const currentDayIndex = istNow.getDay();
-  const currentHour = istNow.getHours();
-  const currentMinute = istNow.getMinutes();
+  // 1. Current IST Reference
+  const istNow = getISTParts(params.nowUTC || new Date());
+  const currentTotalMinutes = istNow.totalMinutes;
+  const currentAnchorIST = formatTimeIST(params.nowUTC || new Date());
 
-  // Minimum spacing between consecutive posts:
-  // Trial: 50 mins buffer (can test more rapidly)
-  // Public: 80 mins buffer (allow algorithm distribution breathing room)
+  // Minimum anti-cannibalization spacing:
+  // Option A (Trial): 50 mins buffer
+  // Option B (Public): 80 mins buffer
   const minSpacingMinutes = postType === 'trial' ? 50 : 80;
 
   // Personalized quality scores for today and tomorrow
-  const todayScores = getPersonalizedHourlyScores(posts, currentDayIndex);
-  const tomorrowScores = getPersonalizedHourlyScores(posts, (currentDayIndex + 1) % 7);
+  const todayScores = getPersonalizedHourlyScores(posts, istNow.dayIndex);
+  const tomorrowDayIndex = (istNow.dayIndex + 1) % 7;
+  const tomorrowScores = getPersonalizedHourlyScores(posts, tomorrowDayIndex);
 
-  // 1. Generate eligible 15-minute slot candidates for TODAY (after current time + 15 mins buffer)
-  const startMinuteToday = Math.ceil((currentHour * 60 + currentMinute + 15) / 15) * 15;
-  const latestViableMinuteToday = 23 * 60 + 30; // 11:30 PM cutoff to avoid dead zone
+  // 2. Define viable window for TODAY
+  // Earliest viable slot: current time + 25 mins buffer (gives creator prep/upload window)
+  const earliestAllowedMinToday = currentTotalMinutes + 25;
+  // Late night cutoff: 23:50 (11:50 PM IST) to prevent posting in the 1-5 AM dead zone
+  const cutoffMinToday = 23 * 60 + 50;
 
-  interface Candidate {
-    dayLabel: 'Today' | 'Tomorrow';
-    minuteOfDay: number;
-    hour: number;
-    minute: number;
-    score: number;
-    rationale: string;
-    targetDateIST: Date;
-  }
+  const availableSpanToday = cutoffMinToday - earliestAllowedMinToday;
 
-  const todayCandidates: Candidate[] = [];
-
-  for (let m = startMinuteToday; m <= latestViableMinuteToday; m += 15) {
-    const h = Math.floor(m / 60);
-    const min = m % 60;
-    const baseScore = todayScores[h];
-
-    // Minor minute-level micro-optimizations (e.g. :15 and :30 are standard viewing windows)
-    const microBoost = (min === 15 || min === 30 || min === 45) ? 1 : 0;
-    const finalScore = Math.min(100, baseScore + microBoost);
-
-    const d = new Date(istNow);
-    d.setHours(h, min, 0, 0);
-
-    todayCandidates.push({
-      dayLabel: 'Today',
-      minuteOfDay: m,
-      hour: h,
-      minute: min,
-      score: finalScore,
-      rationale: HOURLY_RESEARCH_BASELINES[h]?.rationale || 'Optimal viewing window',
-      targetDateIST: d,
-    });
-  }
-
-  // 2. Greedy selection for today with minimum spacing
-  const selectedSlots: Candidate[] = [];
-  const sortedToday = [...todayCandidates].sort((a, b) => b.score - a.score);
-
-  for (const cand of sortedToday) {
-    if (selectedSlots.length >= targetCount) break;
-
-    // Check spacing against already selected slots
-    const hasConflict = selectedSlots.some(
-      s => Math.abs(s.minuteOfDay - cand.minuteOfDay) < minSpacingMinutes
-    );
-
-    if (!hasConflict) {
-      selectedSlots.push(cand);
+  // Determine how many reels can comfortably fit today
+  let numReelsToday = 0;
+  if (availableSpanToday >= 0) {
+    for (let k = targetCount; k >= 1; k--) {
+      const minRequiredSpan = (k - 1) * minSpacingMinutes;
+      if (availableSpanToday >= minRequiredSpan) {
+        numReelsToday = k;
+        break;
+      }
     }
   }
 
-  // Sort chronologically
-  selectedSlots.sort((a, b) => a.minuteOfDay - b.minuteOfDay);
+  const selectedCandidates: InternalSlotCandidate[] = [];
 
-  const todayCount = selectedSlots.length;
-  let hasSpillover = false;
-  let spilloverMessage: string | undefined = undefined;
+  // Helper to pick the best natural slot within an assigned target window [winStart, winEnd]
+  const pickBestSlotInWindow = (
+    winStart: number,
+    winEnd: number,
+    scores: Record<number, number>,
+    dayLabel: 'Today' | 'Tomorrow',
+    year: number,
+    month: number,
+    date: number,
+    prevSlotMin?: number
+  ): InternalSlotCandidate => {
+    let bestCandidate: InternalSlotCandidate | null = null;
+    let highestScore = -1;
 
-  // 3. If today doesn't have enough viable slots (e.g. requested 4 at 10 PM), spillover to TOMORROW
-  if (selectedSlots.length < targetCount) {
-    hasSpillover = true;
-    const neededTomorrow = targetCount - selectedSlots.length;
+    // Search through all natural minutes within this target window
+    const startH = Math.floor(winStart / 60);
+    const endH = Math.floor(winEnd / 60);
 
-    // Tomorrow candidate pool (09:00 AM to 21:30 PM prime hours)
-    const tomorrowCandidates: Candidate[] = [];
-    const tomorrowStartMin = 9 * 60; // 9:00 AM
-    const tomorrowEndMin = 21 * 60 + 30; // 9:30 PM
+    for (let h = startH; h <= endH; h++) {
+      for (const m of NATURAL_MINUTES) {
+        const candidateTotalMin = h * 60 + m;
+        if (candidateTotalMin < winStart || candidateTotalMin > winEnd) continue;
 
-    const tomorrowIST = new Date(istNow);
-    tomorrowIST.setDate(tomorrowIST.getDate() + 1);
+        // Must respect minimum buffer spacing from previous slot
+        if (prevSlotMin !== undefined && (candidateTotalMin - prevSlotMin) < minSpacingMinutes) {
+          continue;
+        }
 
-    for (let m = tomorrowStartMin; m <= tomorrowEndMin; m += 15) {
-      const h = Math.floor(m / 60);
-      const min = m % 60;
-      const baseScore = tomorrowScores[h];
+        const baseScore = scores[h] || 50;
+        // Subtle natural minute preference (e.g. :15 and :25 are high-converting notification times)
+        const minBonus = (m === 15 || m === 25) ? 3 : (m === 35 || m === 45 ? 2 : 1);
+        const totalScore = Math.min(100, baseScore + minBonus);
 
-      const d = new Date(tomorrowIST);
-      d.setHours(h, min, 0, 0);
-
-      tomorrowCandidates.push({
-        dayLabel: 'Tomorrow',
-        minuteOfDay: m,
-        hour: h,
-        minute: min,
-        score: baseScore,
-        rationale: HOURLY_RESEARCH_BASELINES[h]?.rationale || 'Prime daytime window',
-        targetDateIST: d,
-      });
-    }
-
-    const sortedTomorrow = [...tomorrowCandidates].sort((a, b) => b.score - a.score);
-    const selectedTomorrow: Candidate[] = [];
-
-    for (const cand of sortedTomorrow) {
-      if (selectedTomorrow.length >= neededTomorrow) break;
-
-      const hasConflict = selectedTomorrow.some(
-        s => Math.abs(s.minuteOfDay - cand.minuteOfDay) < minSpacingMinutes
-      );
-
-      if (!hasConflict) {
-        selectedTomorrow.push(cand);
+        if (totalScore > highestScore) {
+          highestScore = totalScore;
+          const info = HOURLY_ENGAGEMENT_MAP[h] || { context: 'Prime Window', defaultRationale: 'Optimal audience reach' };
+          bestCandidate = {
+            dayLabel,
+            year,
+            month,
+            date,
+            hour: h,
+            minute: m,
+            totalMinutes: candidateTotalMin,
+            score: totalScore,
+            rationale: info.defaultRationale,
+            context: info.context,
+          };
+        }
       }
     }
 
-    selectedTomorrow.sort((a, b) => a.minuteOfDay - b.minuteOfDay);
-    selectedSlots.push(...selectedTomorrow);
+    // Fallback if strict spacing eliminated all natural candidates: pick safe forward step
+    if (!bestCandidate) {
+      const fallbackTotalMin = Math.min(
+        winEnd,
+        prevSlotMin !== undefined ? prevSlotMin + minSpacingMinutes : winStart
+      );
+      const h = Math.floor(fallbackTotalMin / 60);
+      const m = fallbackTotalMin % 60;
+      const info = HOURLY_ENGAGEMENT_MAP[h] || { context: 'Active Slot', defaultRationale: 'Spaced engagement window' };
 
-    spilloverMessage = todayCount === 0
-      ? `It is currently late evening. To avoid the dead-zone engagement penalty (1 AM – 5 AM), all ${targetCount} reels have been scheduled for tomorrow's highest-retention windows.`
-      : `Only ${todayCount} prime slot${todayCount > 1 ? 's remain' : ' remains'} today before the late-night drop-off. The remaining ${neededTomorrow} reel${neededTomorrow > 1 ? 's have' : ' has'} been planned for tomorrow's peak windows.`;
+      bestCandidate = {
+        dayLabel,
+        year,
+        month,
+        date,
+        hour: h,
+        minute: m,
+        totalMinutes: fallbackTotalMin,
+        score: scores[h] || 65,
+        rationale: info.defaultRationale,
+        context: info.context,
+      };
+    }
+
+    return bestCandidate;
+  };
+
+  // 3. Allocate Today's Slots via Proportional Zone Partitioning
+  if (numReelsToday > 0) {
+    const zoneDuration = availableSpanToday / numReelsToday;
+
+    for (let i = 0; i < numReelsToday; i++) {
+      const zoneStart = Math.round(earliestAllowedMinToday + i * zoneDuration);
+      const zoneEnd = Math.round(earliestAllowedMinToday + (i + 1) * zoneDuration);
+      const prevMin = selectedCandidates.length > 0 
+        ? selectedCandidates[selectedCandidates.length - 1].totalMinutes 
+        : undefined;
+
+      const chosen = pickBestSlotInWindow(
+        zoneStart,
+        zoneEnd,
+        todayScores,
+        'Today',
+        istNow.year,
+        istNow.month,
+        istNow.date,
+        prevMin
+      );
+
+      selectedCandidates.push(chosen);
+    }
   }
 
-  // 4. Transform candidates into final SmartSlot objects with exact UTC and IST strings
-  const finalSlots: SmartSlot[] = selectedSlots.map((s, idx) => {
-    // Convert targetDateIST back to UTC ISO string
-    // IST = UTC + 5h30m, so UTC millis = istMillis - (330 * 60 * 1000)
-    const istTimeMillis = s.targetDateIST.getTime();
-    const utcMillis = istTimeMillis - (330 * 60 * 1000);
-    const utcIso = new Date(utcMillis).toISOString();
+  // 4. Allocate Tomorrow's Spillover Slots if needed
+  const neededTomorrow = targetCount - numReelsToday;
+  let hasSpillover = false;
+  let spilloverMessage: string | undefined = undefined;
 
+  if (neededTomorrow > 0) {
+    hasSpillover = true;
+
+    // Tomorrow date parts
+    const tomorrowRef = new Date(Date.UTC(istNow.year, istNow.month, istNow.date + 1));
+    const tomParts = getISTParts(tomorrowRef);
+
+    // Tomorrow prime windows: 09:15 AM (555m) to 22:30 PM (1350m)
+    const tomStartMin = 9 * 60 + 15;
+    const tomEndMin = 22 * 60 + 30;
+    const tomAvailableSpan = tomEndMin - tomStartMin;
+    const tomZoneDuration = tomAvailableSpan / neededTomorrow;
+
+    let prevTomMin: number | undefined = undefined;
+
+    for (let j = 0; j < neededTomorrow; j++) {
+      const zoneStart = Math.round(tomStartMin + j * tomZoneDuration);
+      const zoneEnd = Math.round(tomStartMin + (j + 1) * tomZoneDuration);
+
+      const chosen = pickBestSlotInWindow(
+        zoneStart,
+        zoneEnd,
+        tomorrowScores,
+        'Tomorrow',
+        tomParts.year,
+        tomParts.month,
+        tomParts.date,
+        prevTomMin
+      );
+
+      selectedCandidates.push(chosen);
+      prevTomMin = chosen.totalMinutes;
+    }
+
+    spilloverMessage = numReelsToday === 0
+      ? `It is currently late night (${currentAnchorIST}). To protect your reach from the 1 AM – 5 AM dead zone, all ${targetCount} reels have been scheduled across tomorrow's prime retention windows.`
+      : `Only ${numReelsToday} reel${numReelsToday > 1 ? 's' : ''} can fit today before the late-night cutoff with your ${minSpacingMinutes}m anti-cannibalization buffer. The remaining ${neededTomorrow} reel${neededTomorrow > 1 ? 's have' : ' has'} been mapped to tomorrow's peak discovery slots.`;
+  }
+
+  // 5. Convert candidates to final SmartSlot objects
+  const finalSlots: SmartSlot[] = selectedCandidates.map((c, index) => {
+    // Generate mathematically exact UTC ISO timestamp from IST year, month, date, hour, minute
+    const utcIso = createUTCFromIST(c.year, c.month, c.date, c.hour, c.minute);
+    const timeIST = formatTimeIST(utcIso);
     const bucket = getTimeBucket(utcIso);
-    const tier = getQualityTier(s.score);
+    const tier = getQualityTier(c.score);
 
     return {
-      slot_id: `slot_${s.dayLabel.toLowerCase()}_${idx + 1}_${Date.now().toString(36)}`,
+      slot_id: `smart_${c.dayLabel.toLowerCase()}_${index + 1}_${Date.now().toString(36)}`,
       timestampUTC: utcIso,
-      timeIST: formatTimeIST(utcIso),
-      dateLabel: s.dayLabel,
+      timeIST,
+      dateLabel: c.dayLabel,
       bucket,
       qualityTier: tier,
-      qualityScore: s.score,
-      rationale: s.rationale,
+      qualityScore: c.score,
+      rationale: c.rationale,
+      windowContext: c.context,
     };
   });
+
+  const executiveSummary = numReelsToday === targetCount
+    ? `From current time ${currentAnchorIST}, we analyzed your remaining ${Math.max(1, Math.round(availableSpanToday / 60))} hours of viewer traffic and allocated ${targetCount} peak slots spaced with a ${minSpacingMinutes}m buffer:`
+    : `From current time ${currentAnchorIST}, we scheduled ${numReelsToday} slot${numReelsToday > 1 ? 's' : ''} for today and ${neededTomorrow} peak slot${neededTomorrow > 1 ? 's' : ''} for tomorrow to prevent algorithm overlap:`;
 
   return {
     postType,
     requestedCount: targetCount,
-    todayCount,
-    tomorrowCount: finalSlots.length - todayCount,
+    todayCount: numReelsToday,
+    tomorrowCount: neededTomorrow,
     hasSpillover,
     spilloverMessage,
+    executiveSummary,
+    currentAnchorIST,
     slots: finalSlots,
   };
 }

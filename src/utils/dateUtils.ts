@@ -11,28 +11,60 @@ export function getCurrentUTC(): string {
 }
 
 /**
- * Converts a UTC ISO date string to a Date object adjusted for IST (Indian Standard Time).
+ * Converts any UTC date or ISO string to an IST-shifted Date object.
+ * When accessing components, use UTC methods (getUTCHours, getUTCMinutes, etc.)
+ * so the output is 100% consistent across any local browser timezone.
  */
-export function getISTDate(utcDateStr: string | Date): Date {
+export function getISTDate(utcDateStr: string | Date = new Date()): Date {
   const d = typeof utcDateStr === 'string' ? new Date(utcDateStr) : utcDateStr;
-  // Compute local UTC millis then add 5.5 hours
-  const utcMillis = d.getTime() + (d.getTimezoneOffset() * 60000);
-  return new Date(utcMillis + (IST_OFFSET_MINUTES * 60000));
+  return new Date(d.getTime() + (IST_OFFSET_MINUTES * 60000));
 }
 
 /**
- * Returns formatted time string in IST, e.g. "02:14 PM IST"
+ * Extracts exact IST date and time components independent of the user's local browser timezone.
  */
-export function formatTimeIST(utcDateStr: string): string {
+export function getISTParts(dateOrIso: string | Date = new Date()) {
+  const istDate = getISTDate(dateOrIso);
+  return {
+    year: istDate.getUTCFullYear(),
+    month: istDate.getUTCMonth(),
+    date: istDate.getUTCDate(),
+    dayIndex: istDate.getUTCDay(),
+    hours: istDate.getUTCHours(),
+    minutes: istDate.getUTCMinutes(),
+    seconds: istDate.getUTCSeconds(),
+    totalMinutes: istDate.getUTCHours() * 60 + istDate.getUTCMinutes(),
+  };
+}
+
+/**
+ * Constructs a valid UTC ISO string from exact IST year, month, date, hours, minutes.
+ */
+export function createUTCFromIST(
+  year: number,
+  month: number,
+  date: number,
+  hours: number,
+  minutes: number
+): string {
+  const fakeUtcMillis = Date.UTC(year, month, date, hours, minutes, 0, 0);
+  const actualUtcMillis = fakeUtcMillis - (IST_OFFSET_MINUTES * 60000);
+  return new Date(actualUtcMillis).toISOString();
+}
+
+/**
+ * Returns formatted time string in IST, e.g. "05:15 PM IST"
+ */
+export function formatTimeIST(utcDateStr: string | Date): string {
   try {
     const ist = getISTDate(utcDateStr);
-    let hours = ist.getHours();
-    const minutes = ist.getMinutes();
+    let hours = ist.getUTCHours();
+    const minutes = ist.getUTCMinutes();
     const ampm = hours >= 12 ? 'PM' : 'AM';
     hours = hours % 12;
     hours = hours ? hours : 12; // 0 hour should be 12
-    const minStr = minutes < 10 ? '0' + minutes : minutes;
-    const hourStr = hours < 10 ? '0' + hours : hours;
+    const minStr = minutes < 10 ? '0' + minutes : minutes.toString();
+    const hourStr = hours < 10 ? '0' + hours : hours.toString();
     return `${hourStr}:${minStr} ${ampm} IST`;
   } catch {
     return 'Invalid Time';
@@ -40,18 +72,18 @@ export function formatTimeIST(utcDateStr: string): string {
 }
 
 /**
- * Returns formatted date string in IST, e.g. "Mon, 23 Sep"
+ * Returns formatted date string in IST, e.g. "Wed, 23 Sep"
  */
-export function formatDateIST(utcDateStr: string, includeYear = false): string {
+export function formatDateIST(utcDateStr: string | Date, includeYear = false): string {
   try {
     const ist = getISTDate(utcDateStr);
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     
-    const dayName = days[ist.getDay()];
-    const dateNum = ist.getDate();
-    const monthName = months[ist.getMonth()];
-    const year = ist.getFullYear();
+    const dayName = days[ist.getUTCDay()];
+    const dateNum = ist.getUTCDate();
+    const monthName = months[ist.getUTCMonth()];
+    const year = ist.getUTCFullYear();
 
     return includeYear 
       ? `${dayName}, ${dateNum} ${monthName} ${year}` 
@@ -62,18 +94,18 @@ export function formatDateIST(utcDateStr: string, includeYear = false): string {
 }
 
 /**
- * Returns full readable IST timestamp, e.g. "Mon, 23 Sep • 02:14 PM IST"
+ * Returns full readable IST timestamp, e.g. "Wed, 23 Sep • 05:15 PM IST"
  */
-export function formatFullIST(utcDateStr: string): string {
+export function formatFullIST(utcDateStr: string | Date): string {
   return `${formatDateIST(utcDateStr, false)} • ${formatTimeIST(utcDateStr)}`;
 }
 
 /**
  * Returns the day of the week in IST (0 = Sunday, 1 = Monday, ..., 6 = Saturday)
  */
-export function getISTDayOfWeek(utcDateStr: string): number {
+export function getISTDayOfWeek(utcDateStr: string | Date): number {
   const ist = getISTDate(utcDateStr);
-  return ist.getDay();
+  return ist.getUTCDay();
 }
 
 export const DAYS_OF_WEEK = [
@@ -95,9 +127,9 @@ export const DAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
  * - Evening: 17:00 - 20:59
  * - Night: 21:00 - 05:59
  */
-export function getTimeBucket(utcDateStr: string): TimeBucket {
+export function getTimeBucket(utcDateStr: string | Date): TimeBucket {
   const ist = getISTDate(utcDateStr);
-  const hour = ist.getHours();
+  const hour = ist.getUTCHours();
 
   if (hour >= 6 && hour < 12) return 'morning';
   if (hour >= 12 && hour < 17) return 'afternoon';
