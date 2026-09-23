@@ -362,7 +362,8 @@ class StorageService {
 
   /**
    * Promotes a Trial reel to Public status.
-   * Resets posted_at to NOW so the 24h check-in timer starts fresh.
+   * IMPORTANT: posted_at is preserved (original trial time) for accurate matrix bucketing.
+   * promoted_to_public_at = NOW drives the 24h public performance timer.
    * PIN verification must be done at the UI layer before calling this.
    */
   public async promoteTrialToPublic(postId: string): Promise<boolean> {
@@ -370,11 +371,14 @@ class StorageService {
     if (index === -1) return false;
 
     const nowISO = new Date().toISOString();
+    const existingTrialViews = this.posts[index].views_24h ?? this.posts[index].trial_views_24h ?? null;
 
     this.posts[index] = {
       ...this.posts[index],
       post_type: 'public',
-      posted_at: nowISO,
+      // posted_at stays unchanged — original trial posting time used for Day×Bucket matrix
+      promoted_to_public_at: nowISO, // 24h public timer is gated on this
+      trial_views_24h: existingTrialViews, // Preserves trial performance outcome
       views_24h: null,
       check_in_completed_at: null,
     };
@@ -387,7 +391,8 @@ class StorageService {
         const postRef = doc(db, 'posts', postId);
         await updateDoc(postRef, {
           post_type: 'public',
-          posted_at: nowISO,
+          promoted_to_public_at: nowISO,
+          trial_views_24h: existingTrialViews,
           views_24h: null,
           check_in_completed_at: null,
         });
@@ -411,11 +416,19 @@ class StorageService {
     const post = this.posts.find(p => p.post_id === postId);
     if (post) {
       const simulatedTime = new Date(Date.now() - 24.5 * 3600 * 1000).toISOString();
-      post.posted_at = simulatedTime;
-      this.persistLocal();
-
-      if (isFirebaseConfigured() && db) {
-        updateDoc(doc(db, 'posts', postId), { posted_at: simulatedTime }).catch(() => {});
+      // For promoted posts, fast-forward the promotion timestamp (not posted_at)
+      if (post.promoted_to_public_at) {
+        post.promoted_to_public_at = simulatedTime;
+        this.persistLocal();
+        if (isFirebaseConfigured() && db) {
+          updateDoc(doc(db, 'posts', postId), { promoted_to_public_at: simulatedTime }).catch(() => {});
+        }
+      } else {
+        post.posted_at = simulatedTime;
+        this.persistLocal();
+        if (isFirebaseConfigured() && db) {
+          updateDoc(doc(db, 'posts', postId), { posted_at: simulatedTime }).catch(() => {});
+        }
       }
     }
   }

@@ -31,14 +31,28 @@ service cloud.firestore {
                     && request.resource.data.slot_source in ['algorithm', 'user']
                     && isNonEmptyString(request.resource.data.posted_at);
 
-      // Updates allowed ONLY by the creator owner:
-      // posted_at, post_type, slot_source, and user_id are strictly immutable
+      // Updates allowed ONLY by the creator owner.
+      // Two permitted update paths:
+      //   (A) Standard check-in update: post_type, posted_at, slot_source stay immutable
+      //   (B) Trial → Public promotion: post_type may change trial→public, posted_at may reset
       allow update: if isOwner(resource.data)
-                    && request.resource.data.user_id == resource.data.user_id
-                    && request.resource.data.posted_at == resource.data.posted_at
-                    && request.resource.data.post_type == resource.data.post_type
+                    && (!('user_id' in resource.data) || resource.data.user_id == null || request.resource.data.user_id == resource.data.user_id)
                     && request.resource.data.slot_source == resource.data.slot_source
-                    && (request.resource.data.views_24h == null || request.resource.data.views_24h is number);
+                    && (request.resource.data.views_24h == null || request.resource.data.views_24h is number)
+                    && (
+                      // Path A: Standard update — post_type and posted_at are immutable
+                      (
+                        request.resource.data.post_type == resource.data.post_type
+                        && request.resource.data.posted_at == resource.data.posted_at
+                      )
+                      ||
+                      // Path B: Trial → Public promotion — only this direction is permitted
+                      (
+                        resource.data.post_type == 'trial'
+                        && request.resource.data.post_type == 'public'
+                        && request.resource.data.views_24h == null
+                      )
+                    );
 
       // Only the creator owner can delete their post
       allow delete: if isOwner(resource.data);

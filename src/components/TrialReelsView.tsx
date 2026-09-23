@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { Post, UserProfile } from '../types';
-import { formatTimeIST, formatDateIST, getTimeBucket, TIME_BUCKET_CONFIG } from '../utils/dateUtils';
+import { formatTimeIST, formatDateIST, formatFullIST, getTimeBucket, TIME_BUCKET_CONFIG } from '../utils/dateUtils';
 import {
-  Search, Trash2, Calendar, List, Eye, Globe, ArrowLeft, FlaskConical,
+  Search, Trash2, Calendar, List, Eye, Globe, ArrowLeft, FlaskConical, CheckCircle2,
 } from 'lucide-react';
 import { SetPublicModal } from './SetPublicModal';
 
 interface TrialReelsViewProps {
-  trialPosts: Post[];
+  allPosts: Post[];        // All posts — trial + promoted-to-public both shown here
   userProfile: UserProfile | null;
   onBack: () => void;
   onRequestDeletePost: (post: Post) => void;
@@ -16,7 +16,7 @@ interface TrialReelsViewProps {
 }
 
 export const TrialReelsView: React.FC<TrialReelsViewProps> = ({
-  trialPosts,
+  allPosts,
   userProfile,
   onBack,
   onRequestDeletePost,
@@ -27,7 +27,12 @@ export const TrialReelsView: React.FC<TrialReelsViewProps> = ({
   const [viewFormat, setViewFormat] = useState<'date_grouped' | 'flat'>('date_grouped');
   const [setPublicTarget, setSetPublicTarget] = useState<Post | null>(null);
 
-  const filteredPosts = trialPosts.filter(p => {
+  // Show: original trial posts + posts that were promoted from trial (have promoted_to_public_at)
+  const trialBoardPosts = allPosts.filter(p =>
+    p.post_type === 'trial' || (p.post_type === 'public' && !!p.promoted_to_public_at)
+  );
+
+  const filteredPosts = trialBoardPosts.filter(p => {
     if (!searchTerm) return true;
     const q = searchTerm.toLowerCase();
     return (
@@ -37,7 +42,7 @@ export const TrialReelsView: React.FC<TrialReelsViewProps> = ({
     );
   });
 
-  // Group by IST Date
+  // Group by original IST Date (posted_at is always the original trial posting time)
   const groupedByDate: Record<string, { dateLabel: string; posts: Post[]; totalViews: number }> = {};
   filteredPosts.forEach(post => {
     const dateLabel = formatDateIST(post.posted_at, true);
@@ -51,77 +56,122 @@ export const TrialReelsView: React.FC<TrialReelsViewProps> = ({
   });
 
   const dateKeys = Object.keys(groupedByDate);
+  const promotedCount = trialBoardPosts.filter(p => !!p.promoted_to_public_at).length;
+  const pendingCount = trialBoardPosts.filter(p => p.post_type === 'trial').length;
 
   // Shared reel row renderer
   const renderReelRow = (post: Post, compact = false) => {
     const bucket = getTimeBucket(post.posted_at);
+    const isPromoted = !!post.promoted_to_public_at;
 
     return (
       <div
         key={post.post_id}
-        className={`${compact ? 'py-3 px-2' : 'py-3 px-3.5'} flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 hover:bg-accent/40 transition-colors`}
+        className={`${compact ? 'py-3 px-2' : 'py-3 px-3.5'} flex flex-col gap-2 hover:bg-accent/40 transition-colors`}
       >
-        {/* Left: Thumbnail & Details */}
-        <div className="flex items-start gap-3 min-w-0">
-          {post.media_ref ? (
-            <img
-              src={post.media_ref}
-              alt="Thumbnail"
-              className="w-11 h-11 rounded-[5px] object-cover border border-border shrink-0"
-            />
-          ) : (
-            <div className="w-11 h-11 rounded-[5px] bg-secondary border border-border flex items-center justify-center font-mono text-[10px] text-muted-foreground shrink-0">
-              reel
-            </div>
-          )}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          {/* Left: Thumbnail & Details */}
+          <div className="flex items-start gap-3 min-w-0">
+            {post.media_ref ? (
+              <img
+                src={post.media_ref}
+                alt="Thumbnail"
+                className="w-11 h-11 rounded-[5px] object-cover border border-border shrink-0"
+              />
+            ) : (
+              <div className="w-11 h-11 rounded-[5px] bg-secondary border border-border flex items-center justify-center font-mono text-[10px] text-muted-foreground shrink-0">
+                reel
+              </div>
+            )}
 
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h4 className="text-xs font-semibold text-foreground truncate max-w-xs sm:max-w-md">
-                {post.title || post.caption || 'Untitled Reel'}
-              </h4>
-              <span className="font-mono text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-[4px] bg-secondary border border-border text-muted-foreground shrink-0">
-                {post.slot_source === 'algorithm' ? 'algo' : 'manual'}
-              </span>
-            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h4 className="text-xs font-semibold text-foreground truncate max-w-xs sm:max-w-md">
+                  {post.title || post.caption || 'Untitled Reel'}
+                </h4>
+                <span className="font-mono text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-[4px] bg-secondary border border-border text-muted-foreground shrink-0">
+                  {post.slot_source === 'algorithm' ? 'algo' : 'manual'}
+                </span>
+                {isPromoted && (
+                  <span className="font-mono text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-[4px] bg-emerald-600/15 border border-emerald-600/30 text-emerald-400 shrink-0">
+                    public
+                  </span>
+                )}
+              </div>
 
-            <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-muted-foreground mt-0.5">
-              <span className="text-foreground font-medium">{formatTimeIST(post.posted_at)}</span>
-              <span>•</span>
-              <span className="capitalize">{TIME_BUCKET_CONFIG[bucket].label} Bucket</span>
-              {compact && (
-                <>
-                  <span>•</span>
-                  <span>{formatDateIST(post.posted_at, false)}</span>
-                </>
-              )}
+              <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-muted-foreground mt-0.5">
+                <span className="text-foreground font-medium">{formatTimeIST(post.posted_at)}</span>
+                <span>•</span>
+                <span className="capitalize">{TIME_BUCKET_CONFIG[bucket].label} Bucket</span>
+                {compact && (
+                  <>
+                    <span>•</span>
+                    <span>{formatDateIST(post.posted_at, false)}</span>
+                  </>
+                )}
+              </div>
             </div>
+          </div>
+
+          {/* Right: Actions */}
+          <div className="shrink-0 flex items-center gap-3 w-full sm:w-auto justify-end">
+            {(post.views_24h !== null || (post.trial_views_24h !== null && post.trial_views_24h !== undefined)) && (
+              <div className="text-right font-mono">
+                <div className="text-xs font-semibold text-foreground flex items-center gap-1.5 justify-end">
+                  <Eye className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span>{((isPromoted ? post.trial_views_24h : post.views_24h) ?? post.views_24h ?? post.trial_views_24h)?.toLocaleString()} views</span>
+                </div>
+                <div className="text-[10px] text-emerald-400">
+                  {isPromoted ? 'trial locked' : '24h locked'}
+                </div>
+              </div>
+            )}
+
+            {isPromoted ? (
+              // Already promoted — show disabled indicator
+              <div className="h-7 px-2.5 rounded-[5px] border border-emerald-600/20 bg-emerald-600/5 text-emerald-600/50 font-mono text-[11px] flex items-center gap-1.5 cursor-default">
+                <CheckCircle2 className="w-3 h-3" />
+                <span>Promoted</span>
+              </div>
+            ) : (
+              // Still trial — show Set Public Record button
+              <button
+                onClick={() => setSetPublicTarget(post)}
+                className="h-7 px-2.5 rounded-[5px] border border-emerald-600/40 bg-emerald-600/10 text-emerald-400 hover:bg-emerald-600/20 hover:border-emerald-500/60 font-mono text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
+                title="Set as Public Record"
+              >
+                <Globe className="w-3 h-3" />
+                <span>Set Public Record</span>
+              </button>
+            )}
+
+            {/* Delete button */}
+            <button
+              onClick={() => onRequestDeletePost(post)}
+              className="p-1.5 rounded-[4px] text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+              title="Remove post"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
 
-        {/* Right: Actions */}
-        <div className="shrink-0 flex items-center gap-2 w-full sm:w-auto justify-end">
-
-          {/* Set Public Record button */}
-          <button
-            onClick={() => setSetPublicTarget(post)}
-            className="h-7 px-2.5 rounded-[5px] border border-emerald-600/40 bg-emerald-600/10 text-emerald-400 hover:bg-emerald-600/20 hover:border-emerald-500/60 font-mono text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
-            title="Set as Public Record"
-          >
-            <Globe className="w-3 h-3" />
-            <span>Set Public Record</span>
-          </button>
-
-          {/* Delete button */}
-          <button
-            onClick={() => onRequestDeletePost(post)}
-            className="p-1.5 rounded-[4px] text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-            title="Remove post"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-
-        </div>
+        {/* Promoted indicator strip — shows below row */}
+        {isPromoted && post.promoted_to_public_at && (
+          <div className="ml-14 flex items-center justify-between px-2.5 py-1.5 rounded-[5px] bg-emerald-600/8 border border-emerald-600/20">
+            <div className="flex items-center gap-1.5">
+              <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+              <span className="font-mono text-[11px] text-emerald-400/90 font-medium">
+                Shifted to Public · {formatFullIST(post.promoted_to_public_at)}
+              </span>
+            </div>
+            {post.views_24h !== null && (
+              <span className="font-mono text-[11px] text-emerald-300">
+                Public Views: {post.views_24h.toLocaleString()}
+              </span>
+            )}
+          </div>
+        )}
       </div>
     );
   };
@@ -147,11 +197,11 @@ export const TrialReelsView: React.FC<TrialReelsViewProps> = ({
                   Trial Reels Board
                 </span>
                 <span className="font-mono text-[11px] text-muted-foreground px-1.5 py-0.5 rounded-[4px] bg-secondary border border-border">
-                  {trialPosts.length} reels
+                  {pendingCount} trial · {promotedCount} promoted
                 </span>
               </div>
               <p className="text-[11px] text-muted-foreground font-mono mt-0.5">
-                Promote trial reels to public — 24h timer starts on confirmation
+                Promote trial reels to public — promoted ones show their shift date
               </p>
             </div>
           </div>
@@ -226,7 +276,7 @@ export const TrialReelsView: React.FC<TrialReelsViewProps> = ({
           {/* Empty State */}
           {filteredPosts.length === 0 ? (
             <div className="p-10 text-center text-xs text-muted-foreground rounded-[6px] bg-secondary border border-border">
-              {trialPosts.length === 0
+              {trialBoardPosts.length === 0
                 ? 'No trial reels logged yet. Switch to Trial mode and log your first test reel.'
                 : 'No reels match your search.'}
             </div>

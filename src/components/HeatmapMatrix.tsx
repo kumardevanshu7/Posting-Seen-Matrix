@@ -19,13 +19,13 @@ export const HeatmapMatrix: React.FC<HeatmapMatrixProps> = ({ dayStats }) => {
     });
   });
 
-  // Grayscale tonal ramp (Executor design system)
+  // Tonal ramp: light purple for best slot, grayscale for rest
   const getCellTone = (median: number, count: number) => {
     if (count === 0) return 'bg-[#0a0a0a] border-border text-[#404040] hover:border-input';
     if (maxMedian === 0) return 'bg-secondary border-border text-foreground';
 
     const ratio = median / maxMedian;
-    if (ratio >= 0.8) return 'bg-[#2a2a2a] border-[#444444] text-foreground font-semibold';
+    if (ratio >= 0.8) return 'bg-violet-950/70 border-violet-700/50 text-violet-200 font-semibold';  // Best → purple
     if (ratio >= 0.5) return 'bg-[#202020] border-[#333333] text-foreground';
     if (ratio >= 0.25) return 'bg-[#181818] border-border text-foreground/90';
     return 'bg-secondary border-border text-muted-foreground';
@@ -38,23 +38,23 @@ export const HeatmapMatrix: React.FC<HeatmapMatrixProps> = ({ dayStats }) => {
         <div>
           <div className="flex items-center gap-2">
             <span className="sec-label">Performance Heatmap</span>
-            <span className="font-mono text-[11px] text-muted-foreground">Day × Time-Bucket</span>
+            <span className="font-mono text-[11px] text-muted-foreground">Day × Time-Bucket · All Posts</span>
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
             Median 24h view distribution mapped to Indian Standard Time
           </p>
         </div>
 
-        {/* Grayscale Legend */}
+        {/* Legend */}
         <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
-          <span>0</span>
+          <span>Low</span>
           <div className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded-[2px] bg-[#0a0a0a] border border-border" />
+            <span className="w-2.5 h-2.5 rounded-[2px] bg-secondary border border-border" />
             <span className="w-2.5 h-2.5 rounded-[2px] bg-[#181818] border border-border" />
             <span className="w-2.5 h-2.5 rounded-[2px] bg-[#202020] border border-[#333333]" />
-            <span className="w-2.5 h-2.5 rounded-[2px] bg-[#2a2a2a] border border-[#444444]" />
+            <span className="w-2.5 h-2.5 rounded-[2px] bg-violet-950/70 border border-violet-700/50" />
           </div>
-          <span>Max</span>
+          <span className="text-violet-300">Best</span>
         </div>
       </div>
 

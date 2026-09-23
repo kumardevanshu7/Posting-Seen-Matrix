@@ -25,6 +25,7 @@ import { DisclaimerView } from './components/DisclaimerView';
 import { ContactView } from './components/ContactView';
 import { ArticleView } from './components/ArticleView';
 import { TrialReelsView } from './components/TrialReelsView';
+import { PublicReelsView } from './components/PublicReelsView';
 import { LegalFooter } from './components/LegalFooter';
 import { RecommendationSkeleton, MatrixSkeleton, TimelineSkeleton } from './components/SkeletonLoader';
 import { isFirebaseConfigured, subscribeToAuth, logout } from './config/firebase';
@@ -34,7 +35,7 @@ import { Plus, LayoutDashboard, Compass, Zap, BookOpen } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [activePostType, setActivePostType] = useState<PostType>('public');
-  const [currentView, setCurrentView] = useState<'app' | 'landing' | 'explore' | 'about' | 'privacy' | 'terms' | 'disclaimer' | 'contact' | 'article' | 'trial_board'>(() => {
+  const [currentView, setCurrentView] = useState<'app' | 'landing' | 'explore' | 'about' | 'privacy' | 'terms' | 'disclaimer' | 'contact' | 'article' | 'trial_board' | 'public_board'>(() => {
     return localStorage.getItem('time_matrix_authed') === 'true' ? 'app' : 'landing';
   });
   const [isQuickPostOpen, setIsQuickPostOpen] = useState(false);
@@ -124,7 +125,7 @@ export const App: React.FC = () => {
   const pendingCheckInCount = allPosts.filter(p => p.views_24h === null).length;
 
   const recommendation = generateRecommendation(currentPosts);
-  const matrixStats = computeMatrixStats(currentPosts);
+  const matrixStats = computeMatrixStats(allPosts);
   const comparisonReport = computeComparisonReport(currentPosts);
   const currentStage = getEngineStage(completedPosts.length);
 
@@ -194,7 +195,7 @@ export const App: React.FC = () => {
     return (
       <>
         <TrialReelsView
-          trialPosts={trialPosts}
+          allPosts={allPosts}
           userProfile={userProfile}
           onBack={() => { setCurrentView('app'); setActivePostType('trial'); }}
           onRequestDeletePost={(post) => setDeleteTargetPost(post)}
@@ -202,6 +203,39 @@ export const App: React.FC = () => {
           onRefresh={() => setVersion(v => v + 1)}
         />
         {/* PIN-Protected Post Deletion Modal — also needed on trial board */}
+        <DeleteConfirmModal
+          isOpen={!!deleteTargetPost}
+          onClose={() => setDeleteTargetPost(null)}
+          post={deleteTargetPost}
+          userProfile={userProfile}
+          onConfirmDelete={handleConfirmDeletePost}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+        />
+        {currentUser && (
+          <SettingsModal
+            isOpen={isSettingsOpen}
+            onClose={() => setIsSettingsOpen(false)}
+            currentUser={currentUser}
+            userProfile={userProfile}
+            onProfileUpdated={(updatedProfile) => {
+              setUserProfile(updatedProfile);
+              setVersion(v => v + 1);
+            }}
+          />
+        )}
+      </>
+    );
+  }
+  if (currentView === 'public_board') {
+    return (
+      <>
+        <PublicReelsView
+          publicPosts={publicPosts}
+          userProfile={userProfile}
+          onBack={() => { setCurrentView('app'); setActivePostType('public'); }}
+          onRequestDeletePost={(post) => setDeleteTargetPost(post)}
+        />
+        {/* PIN-Protected Post Deletion Modal — also needed on public board */}
         <DeleteConfirmModal
           isOpen={!!deleteTargetPost}
           onClose={() => setDeleteTargetPost(null)}
@@ -315,6 +349,7 @@ export const App: React.FC = () => {
             postType={activePostType}
             onRequestDeletePost={(post) => setDeleteTargetPost(post)}
             onOpenTrialBoard={() => setCurrentView('trial_board')}
+            onOpenPublicBoard={() => setCurrentView('public_board')}
           />
         )}
 

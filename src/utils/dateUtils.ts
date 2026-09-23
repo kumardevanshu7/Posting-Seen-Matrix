@@ -174,8 +174,15 @@ export interface CheckInStatus {
   checkInUnlockTimeUTC: string;
 }
 
-export function getCheckInStatus(postedAtUTC: string): CheckInStatus {
-  const postDate = new Date(postedAtUTC).getTime();
+/**
+ * Calculates 24h check-in timing and state.
+ * For promoted trial→public posts, uses promoted_to_public_at as the timer start (not posted_at).
+ * This preserves original posted_at for matrix bucketing while gating the public 24h window correctly.
+ */
+export function getCheckInStatus(postedAtUTC: string, promotedToPublicAt?: string | null): CheckInStatus {
+  // Use promotion timestamp for timer if available (promoted trial→public), else original posted_at
+  const timerStartISO = promotedToPublicAt || postedAtUTC;
+  const postDate = new Date(timerStartISO).getTime();
   const unlockDate = postDate + 24 * 60 * 60 * 1000;
   const now = Date.now();
   const diff = unlockDate - now;

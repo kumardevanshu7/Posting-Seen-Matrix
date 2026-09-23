@@ -67,19 +67,27 @@ export function getEngineStage(completedPostCount: number): EngineStage {
  * Computes day-by-day and bucket-by-bucket statistics for a given set of posts.
  */
 export function computeMatrixStats(posts: Post[]): DayStats[] {
-  // Only completed check-ins count toward performance matrix
-  const completedPosts = posts.filter(p => p.views_24h !== null && p.views_24h !== undefined);
+  // Helper to extract effective views:
+  // Uses views_24h when locked; falls back to trial_views_24h if public check-in is pending
+  const getEffectiveViews = (p: Post): number | null => {
+    if (p.views_24h !== null && p.views_24h !== undefined) return p.views_24h;
+    if (p.trial_views_24h !== null && p.trial_views_24h !== undefined) return p.trial_views_24h;
+    return null;
+  };
+
+  // Posts with either verified public views or verified trial views
+  const completedPosts = posts.filter(p => getEffectiveViews(p) !== null);
 
   return DAYS_OF_WEEK.map((dayName, dayIndex) => {
     const dayPosts = completedPosts.filter(p => getISTDayOfWeek(p.posted_at) === dayIndex);
-    const dayViews = dayPosts.map(p => p.views_24h as number);
+    const dayViews = dayPosts.map(p => getEffectiveViews(p) as number);
     const overallMedian = calculateMedian(dayViews);
 
     const bucketsRecord = {} as Record<TimeBucket, BucketStats>;
 
     BUCKET_KEYS.forEach(bucket => {
       const bucketPosts = dayPosts.filter(p => getTimeBucket(p.posted_at) === bucket);
-      const viewsList = bucketPosts.map(p => p.views_24h as number);
+      const viewsList = bucketPosts.map(p => getEffectiveViews(p) as number);
       const median = calculateMedian(viewsList);
 
       // Robust Recency-weighted score with Outlier Capping (spec Section 6.3)
@@ -88,7 +96,7 @@ export function computeMatrixStats(posts: Post[]): DayStats[] {
       let outlierCount = 0;
 
       bucketPosts.forEach(p => {
-        const views = p.views_24h as number;
+        const views = getEffectiveViews(p) as number;
         const outlier = isOutlier(views, median);
         if (outlier) outlierCount++;
 

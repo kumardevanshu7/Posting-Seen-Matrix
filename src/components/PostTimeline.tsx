@@ -9,9 +9,10 @@ interface PostTimelineProps {
   postType: PostType;
   onRequestDeletePost?: (post: Post) => void;
   onOpenTrialBoard?: () => void;
+  onOpenPublicBoard?: () => void;
 }
 
-export const PostTimeline: React.FC<PostTimelineProps> = ({ posts, postType, onRequestDeletePost, onOpenTrialBoard }) => {
+export const PostTimeline: React.FC<PostTimelineProps> = ({ posts, postType, onRequestDeletePost, onOpenTrialBoard, onOpenPublicBoard }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'completed' | 'pending'>('all');
   const [viewFormat, setViewFormat] = useState<'date_grouped' | 'flat'>('date_grouped');
@@ -77,6 +78,17 @@ export const PostTimeline: React.FC<PostTimelineProps> = ({ posts, postType, onR
               >
                 <ExternalLink className="w-3 h-3" />
                 <span>Open Trial Board</span>
+              </button>
+            )}
+            {/* Public Board shortcut — only shows on public tab */}
+            {postType === 'public' && onOpenPublicBoard && (
+              <button
+                onClick={onOpenPublicBoard}
+                className="flex items-center gap-1 font-mono text-[11px] text-violet-400 hover:text-violet-300 underline underline-offset-2 transition-colors cursor-pointer"
+                title="Open full Public Reels Board"
+              >
+                <ExternalLink className="w-3 h-3" />
+                <span>Open Public Board</span>
               </button>
             )}
           </div>

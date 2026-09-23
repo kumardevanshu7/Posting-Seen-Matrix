@@ -9,7 +9,7 @@ export interface Post {
   user_id?: string; // Authenticated creator UID
   title?: string;
   post_type: PostType;
-  posted_at: string; // ISO 8601 UTC timestamp
+  posted_at: string; // ISO 8601 UTC — original trial/public posting time (immutable for matrix bucketing)
   caption?: string;
   media_ref?: string; // Supabase URL or local preview URL
   slot_source: SlotSource;
@@ -17,6 +17,8 @@ export interface Post {
   check_in_completed_at?: string | null;
   external_signal_id?: string | null;
   notes?: string;
+  promoted_to_public_at?: string | null; // Set when trial→public; drives 24h public timer (posted_at stays original)
+  trial_views_24h?: number | null; // Preserves trial 24h performance outcome after promotion to public
 }
 
 export interface ExternalSignal {

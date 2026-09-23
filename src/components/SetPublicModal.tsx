@@ -112,7 +112,7 @@ export const SetPublicModal: React.FC<SetPublicModalProps> = ({
             )}
             <div className="min-w-0 flex-1">
               <p className="font-medium text-foreground text-xs line-clamp-2">
-                {post.title || 'Untitled Reel'}
+                {post.title || post.caption || 'Untitled Reel'}
               </p>
               <p className="font-mono text-[11px] text-muted-foreground mt-0.5">
                 Trial posted: {formatFullIST(post.posted_at)}

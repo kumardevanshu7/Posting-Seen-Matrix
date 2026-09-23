@@ -75,7 +75,7 @@ export const CheckInQueue: React.FC<CheckInQueueProps> = ({ posts, onCheckInComp
       {/* Cards list */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
         {pendingPosts.map(post => {
-          const status = getCheckInStatus(post.posted_at);
+          const status = getCheckInStatus(post.posted_at, post.promoted_to_public_at);
           const inputValue = viewInputs[post.post_id] || '';
 
           return (
@@ -91,14 +91,16 @@ export const CheckInQueue: React.FC<CheckInQueueProps> = ({ posts, onCheckInComp
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-xs text-foreground truncate">
-                      {post.caption || 'Untitled Reel'}
+                      {post.title || post.caption || 'Untitled Reel'}
                     </span>
                     <span className="font-mono text-[10px] text-muted-foreground uppercase tracking-sec-label">
                       {post.slot_source === 'algorithm' ? 'algo' : 'manual'}
                     </span>
                   </div>
                   <div className="font-mono text-[11px] text-muted-foreground mt-0.5">
-                    {formatFullIST(post.posted_at)}
+                    {post.promoted_to_public_at
+                      ? `Published: ${formatFullIST(post.promoted_to_public_at)}`
+                      : formatFullIST(post.posted_at)}
                   </div>
                 </div>
 
