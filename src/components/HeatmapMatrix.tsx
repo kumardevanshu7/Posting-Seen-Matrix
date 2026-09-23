@@ -138,6 +138,9 @@ export const HeatmapMatrix: React.FC<HeatmapMatrixProps> = ({ dayStats }) => {
                   Median: <strong className="text-foreground">{selectedSlot.stats.medianViews.toLocaleString()}</strong> • 
                   Mean: <strong className="text-foreground">{selectedSlot.stats.meanViews.toLocaleString()}</strong> • 
                   Sample: <strong className="text-foreground">{selectedSlot.stats.completedCount}</strong> verified
+                  {selectedSlot.stats.outlierCount && selectedSlot.stats.outlierCount > 0 ? (
+                    <span className="text-amber-400 ml-1.5 font-medium">({selectedSlot.stats.outlierCount} outlier capped)</span>
+                  ) : null}
                 </span>
               ) : (
                 <span>No verified posts in this slot</span>

@@ -33,6 +33,16 @@ export function isOutlier(views: number, median: number): boolean {
 }
 
 /**
+ * Formats a 24-hour integer into a 12-hour IST string, handling midnight (0 -> 12 AM) correctly.
+ */
+export function formatHourSlotIST(hour: number, minutes = '00'): string {
+  const displayHour = hour === 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+  const period = hour >= 12 ? 'PM' : 'AM';
+  const padHour = displayHour < 10 ? '0' + displayHour : displayHour;
+  return `${padHour}:${minutes} ${period} IST`;
+}
+
+/**
  * Recency weight factor:
  * Gives exponentially decaying weights to older posts.
  * Half-life of 21 days (3 weeks) so Instagram algorithm shifts are honored.
@@ -70,13 +80,22 @@ export function computeMatrixStats(posts: Post[]): DayStats[] {
     BUCKET_KEYS.forEach(bucket => {
       const bucketPosts = dayPosts.filter(p => getTimeBucket(p.posted_at) === bucket);
       const viewsList = bucketPosts.map(p => p.views_24h as number);
+      const median = calculateMedian(viewsList);
 
-      // Recency-weighted score
+      // Robust Recency-weighted score with Outlier Capping (spec Section 6.3)
       let weightedSum = 0;
       let totalWeights = 0;
+      let outlierCount = 0;
+
       bucketPosts.forEach(p => {
+        const views = p.views_24h as number;
+        const outlier = isOutlier(views, median);
+        if (outlier) outlierCount++;
+
+        // Cap outliers at 3x median (min 5,000) so viral spikes keep signal without distorting Stage 2/3
+        const effectiveViews = outlier ? Math.max(median * 3, 5000) : views;
         const weight = getRecencyWeight(p.posted_at);
-        weightedSum += (p.views_24h as number) * weight;
+        weightedSum += effectiveViews * weight;
         totalWeights += weight;
       });
       const recencyScore = totalWeights > 0 ? Math.round(weightedSum / totalWeights) : 0;
@@ -88,8 +107,9 @@ export function computeMatrixStats(posts: Post[]): DayStats[] {
         postCount: posts.filter(p => getISTDayOfWeek(p.posted_at) === dayIndex && getTimeBucket(p.posted_at) === bucket).length,
         completedCount: bucketPosts.length,
         meanViews: calculateMean(viewsList),
-        medianViews: calculateMedian(viewsList),
+        medianViews: median,
         recencyWeightedScore: recencyScore,
+        outlierCount,
         posts: bucketPosts,
       };
     });
@@ -184,7 +204,7 @@ export function generateRecommendation(posts: Post[]): TimeSlotRecommendation {
 
     const topSlot = slotsWithData[0];
     const hour = TIME_BUCKET_CONFIG[topSlot.bucket].defaultSuggestedHour;
-    const timeIst = `${hour > 12 ? hour - 12 : hour}:00 ${hour >= 12 ? 'PM' : 'AM'} IST`;
+    const timeIst = formatHourSlotIST(hour, '00');
 
     // Confidence: capped at 25% during cold start to be honest
     const confidence = Math.min(25, Math.round((totalCompleted / 15) * 25));
@@ -218,7 +238,7 @@ export function generateRecommendation(posts: Post[]): TimeSlotRecommendation {
 
     const topSlot = slotsWithData[0];
     const hour = TIME_BUCKET_CONFIG[topSlot.bucket].defaultSuggestedHour;
-    const timeIst = `${hour > 12 ? hour - 12 : hour}:30 ${hour >= 12 ? 'PM' : 'AM'} IST`;
+    const timeIst = formatHourSlotIST(hour, '30');
 
     // Confidence between 30% and 75%
     const baseConfidence = 30 + Math.round(((totalCompleted - 15) / 35) * 45);
@@ -278,12 +298,13 @@ export function generateRecommendation(posts: Post[]): TimeSlotRecommendation {
     .filter(s => s.stats.completedCount > 0)
     .sort((a, b) => b.stats.recencyWeightedScore - a.stats.recencyWeightedScore)[0];
 
-  if (topExploitSlot && selectedSlot !== topExploitSlot && selectedSlot.stats.completedCount < 3) {
+  // If top exploitation slot exists and another slot was chosen, it was chosen due to UCB1 exploration bonus
+  if (topExploitSlot && selectedSlot !== topExploitSlot) {
     isExplore = true;
   }
 
   const hour = TIME_BUCKET_CONFIG[selectedSlot.bucket].defaultSuggestedHour;
-  const timeIst = `${hour > 12 ? hour - 12 : hour}:00 ${hour >= 12 ? 'PM' : 'AM'} IST`;
+  const timeIst = formatHourSlotIST(hour, '00');
   const confidence = isExplore ? 65 : Math.min(95, 80 + Math.min(15, Math.floor((totalCompleted - 50) / 10)));
 
   const rationale = isExplore

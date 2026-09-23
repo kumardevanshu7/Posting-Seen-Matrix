@@ -51,6 +51,7 @@ export interface BucketStats {
   meanViews: number;
   medianViews: number;
   recencyWeightedScore: number;
+  outlierCount?: number;
   posts: Post[];
 }
 
