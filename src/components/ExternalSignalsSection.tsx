@@ -136,7 +136,7 @@ export const ExternalSignalsSection: React.FC<ExternalSignalsSectionProps> = ({ 
                   type="date"
                   value={weekOf}
                   onChange={(e) => setWeekOf(e.target.value)}
-                  className="w-full h-[34px] px-3 rounded-[6px] bg-background border border-input text-foreground font-mono text-xs focus:outline-none focus:border-ring"
+                  className="w-full h-[34px] px-3 rounded-[6px] bg-background border border-input text-foreground font-mono text-xs focus:outline-none focus:border-ring [color-scheme:dark] cursor-pointer"
                   required
                 />
               </div>

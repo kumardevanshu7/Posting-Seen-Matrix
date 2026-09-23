@@ -4,6 +4,7 @@
 
 @layer base {
   :root {
+    color-scheme: dark;
     --background: #0a0a0a;
     --foreground: #ededed;
     --card: #0f0f0f;
@@ -30,6 +31,24 @@
     font-family: 'Geist', ui-sans-serif, system-ui, sans-serif;
     letter-spacing: -0.011em;
   }
+}
+
+/* Ensure native date and time picker icons (calendar & clock) are bright, crisp, and clearly visible in dark mode */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  filter: invert(0.85);
+  opacity: 0.85;
+  border-radius: 4px;
+  padding: 2px;
+  transition: opacity 0.15s ease, filter 0.15s ease, background-color 0.15s ease;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="time"]::-webkit-calendar-picker-indicator:hover {
+  filter: invert(1);
+  opacity: 1;
+  background-color: rgba(255, 255, 255, 0.1);
 }
 
 /* Hairline scrollbar */

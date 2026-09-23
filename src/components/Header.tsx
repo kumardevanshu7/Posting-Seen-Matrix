@@ -1,5 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Bell, LogOut, User as UserIcon, Zap } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  Plus, 
+  Bell, 
+  LogOut, 
+  User as UserIcon, 
+  Zap, 
+  ChevronDown, 
+  ShieldCheck, 
+  BookOpen, 
+  Compass 
+} from 'lucide-react';
 import { PostType, EngineStage, UserProfile } from '../types';
 import { formatTimeIST, formatDateIST } from '../utils/dateUtils';
 import { User } from 'firebase/auth';
@@ -18,6 +28,7 @@ interface HeaderProps {
   currentUser?: User | null;
   userProfile?: UserProfile | null;
   onEditProfile?: () => void;
+  onOpenSettings?: () => void;
   onSignOut?: () => void;
 }
 
@@ -35,10 +46,27 @@ export const Header: React.FC<HeaderProps> = ({
   currentUser,
   userProfile,
   onEditProfile,
+  onOpenSettings,
   onSignOut,
 }) => {
   const [currentIST, setCurrentIST] = useState<string>('');
   const [currentDateIST, setCurrentDateIST] = useState<string>('');
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+        setIsProfileMenuOpen(false);
+      }
+    };
+    if (isProfileMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isProfileMenuOpen]);
 
   useEffect(() => {
     const updateTime = () => {
@@ -111,38 +139,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Right: Creator Profile & Navigation */}
-          <div className="flex items-center gap-2">
-            {/* Creator Profile Chip & Sign Out */}
-            {currentUser ? (
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={onEditProfile}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-[5px] bg-secondary/80 border border-border hover:border-input transition-colors group cursor-pointer"
-                  title="Edit Creator Profile"
-                >
-                  <UserIcon className="w-3 h-3 text-muted-foreground group-hover:text-foreground" />
-                  <span className="font-mono text-[11px] text-muted-foreground group-hover:text-foreground max-w-[130px] truncate">
-                    {userProfile?.name || currentUser.displayName || currentUser.email?.split('@')[0]}
-                  </span>
-                  {userProfile?.age && (
-                    <span className="text-[10px] text-muted-foreground font-mono">
-                      ({userProfile.age}y)
-                    </span>
-                  )}
-                </button>
-                <button
-                  onClick={onSignOut}
-                  className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer"
-                  title="Sign out"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ) : null}
-
-            {/* Divider */}
-            <div className="hidden sm:block h-3.5 w-px bg-border/60" />
-
+          <div className="flex items-center gap-1.5 sm:gap-2">
             {/* View Toggle: Overview / Console */}
             {currentView !== 'app' ? (
               <button
@@ -162,19 +159,19 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             ) : null}
 
-            {/* Science / Article */}
+            {/* Science / Article - Desktop */}
             <button
               onClick={() => onToggleView('article')}
-              className="h-7 px-2 rounded-[5px] border border-input bg-transparent text-foreground hover:bg-accent text-[11px] font-mono transition-colors cursor-pointer"
+              className="hidden sm:inline-flex h-7 px-2 rounded-[5px] border border-input bg-transparent text-foreground hover:bg-accent text-[11px] font-mono transition-colors cursor-pointer items-center"
               title="The Science & Architecture of Time Matrix"
             >
               Article
             </button>
 
-            {/* Explore Arigato Labs */}
+            {/* Explore Arigato Labs - Desktop */}
             <button
               onClick={() => onToggleView('explore')}
-              className="h-7 px-2 rounded-[5px] border border-input bg-transparent text-foreground hover:bg-accent text-[11px] font-mono transition-colors flex items-center gap-1.5 cursor-pointer"
+              className="hidden sm:inline-flex h-7 px-2 rounded-[5px] border border-input bg-transparent text-foreground hover:bg-accent text-[11px] font-mono transition-colors items-center gap-1.5 cursor-pointer"
               title="Explore Arigato Labs"
             >
               <img 
@@ -184,6 +181,117 @@ export const Header: React.FC<HeaderProps> = ({
               />
               <span className="hidden md:inline">Explore</span>
             </button>
+
+            {/* Creator Profile Dropdown */}
+            {currentUser && (
+              <div className="relative" ref={profileMenuRef}>
+                <button
+                  onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+                  className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-[5px] bg-secondary/80 border border-border hover:border-input transition-colors group cursor-pointer"
+                  title="Creator Account & Settings"
+                >
+                  <UserIcon className="w-3 h-3 text-muted-foreground group-hover:text-foreground" />
+                  <span className="font-mono text-[11px] text-muted-foreground group-hover:text-foreground max-w-[85px] sm:max-w-[120px] truncate">
+                    {userProfile?.name || currentUser.displayName || currentUser.email?.split('@')[0]}
+                  </span>
+                  {userProfile?.deletion_pin && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" title="Deletion PIN Protected" />
+                  )}
+                  <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform duration-200 ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {/* Dropdown Menu */}
+                {isProfileMenuOpen && (
+                  <div className="absolute right-0 mt-1.5 w-60 rounded-[6px] bg-[#0c0c0c] border border-border shadow-2xl py-1.5 z-50 animate-in fade-in-0 zoom-in-95">
+                    {/* User Info Header */}
+                    <div className="px-3 py-2 border-b border-border/60">
+                      <p className="text-[12px] font-mono font-medium text-foreground truncate">
+                        {userProfile?.name || currentUser.displayName || 'Creator'}
+                      </p>
+                      <p className="text-[10px] font-mono text-muted-foreground truncate">
+                        {currentUser.email}
+                      </p>
+                      {userProfile?.deletion_pin ? (
+                        <div className="mt-1.5 flex items-center gap-1.5 text-[10px] font-mono text-emerald-400">
+                          <ShieldCheck className="w-3 h-3" />
+                          <span>PIN Protection: ON</span>
+                        </div>
+                      ) : (
+                        <div className="mt-1.5 flex items-center gap-1.5 text-[10px] font-mono text-amber-400/90">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                          <span>No Deletion PIN Set</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Menu Actions */}
+                    <div className="py-1">
+                      <button
+                        onClick={() => {
+                          setIsProfileMenuOpen(false);
+                          onOpenSettings?.();
+                        }}
+                        className="w-full px-3 py-2 text-left text-xs font-mono flex items-center justify-between text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck className="w-3.5 h-3.5 text-primary" />
+                          <span>Settings & PIN</span>
+                        </div>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">Config</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setIsProfileMenuOpen(false);
+                          onEditProfile?.();
+                        }}
+                        className="w-full px-3 py-2 text-left text-xs font-mono flex items-center gap-2 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer"
+                      >
+                        <UserIcon className="w-3.5 h-3.5 text-muted-foreground" />
+                        <span>Edit Creator Profile</span>
+                      </button>
+
+                      {/* Mobile-only view links inside dropdown */}
+                      <div className="sm:hidden border-t border-border/40 my-1 pt-1">
+                        <button
+                          onClick={() => {
+                            setIsProfileMenuOpen(false);
+                            onToggleView('article');
+                          }}
+                          className="w-full px-3 py-2 text-left text-xs font-mono flex items-center gap-2 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer"
+                        >
+                          <BookOpen className="w-3.5 h-3.5 text-muted-foreground" />
+                          <span>The Science Article</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setIsProfileMenuOpen(false);
+                            onToggleView('explore');
+                          }}
+                          className="w-full px-3 py-2 text-left text-xs font-mono flex items-center gap-2 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer"
+                        >
+                          <Compass className="w-3.5 h-3.5 text-muted-foreground" />
+                          <span>Explore Arigato Labs</span>
+                        </button>
+                      </div>
+
+                      <div className="border-t border-border/60 my-1 pt-1">
+                        <button
+                          onClick={() => {
+                            setIsProfileMenuOpen(false);
+                            onSignOut?.();
+                          }}
+                          className="w-full px-3 py-2 text-left text-xs font-mono flex items-center gap-2 text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+                        >
+                          <LogOut className="w-3.5 h-3.5" />
+                          <span>Sign Out</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
         </div>

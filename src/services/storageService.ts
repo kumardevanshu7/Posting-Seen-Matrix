@@ -7,6 +7,7 @@ import {
   setDoc, 
   updateDoc, 
   deleteDoc, 
+  getDocs,
   onSnapshot, 
   query, 
   where 
@@ -14,6 +15,8 @@ import {
 
 const STORAGE_KEY_POSTS = 'time_matrix_posts_v3';
 const STORAGE_KEY_SIGNALS = 'time_matrix_signals_v3';
+const STORAGE_KEY_DELETED_POSTS = 'time_matrix_deleted_posts_v3';
+const STORAGE_KEY_DELETED_SIGNALS = 'time_matrix_deleted_signals_v3';
 
 function sanitizeForFirestore<T extends Record<string, any>>(obj: T): Record<string, any> {
   const clean: Record<string, any> = {};
@@ -28,6 +31,8 @@ function sanitizeForFirestore<T extends Record<string, any>>(obj: T): Record<str
 class StorageService {
   private posts: Post[] = [];
   private signals: ExternalSignal[] = [];
+  private deletedPostIds: Set<string> = new Set();
+  private deletedSignalIds: Set<string> = new Set();
   private listeners: Array<() => void> = [];
   private currentUserId: string | null = null;
   private unsubscribeFirestorePosts: (() => void) | null = null;
@@ -36,6 +41,9 @@ class StorageService {
 
   constructor() {
     this.loadFromLocal();
+    if (isSupabaseConfigured()) {
+      this.purgeOrphanedThumbnails().catch(() => {});
+    }
     if (isFirebaseConfigured() && db) {
       // Listen to auth state to scope Firestore queries strictly to authenticated creator
       this.unsubscribeAuth = subscribeToAuth((user) => {
@@ -60,12 +68,32 @@ class StorageService {
     try {
       const storedPosts = localStorage.getItem(STORAGE_KEY_POSTS);
       const storedSignals = localStorage.getItem(STORAGE_KEY_SIGNALS);
-      this.posts = storedPosts ? JSON.parse(storedPosts) : [];
-      this.signals = storedSignals ? JSON.parse(storedSignals) : [];
+      const storedDeletedPosts = localStorage.getItem(STORAGE_KEY_DELETED_POSTS);
+      const storedDeletedSignals = localStorage.getItem(STORAGE_KEY_DELETED_SIGNALS);
+
+      this.deletedPostIds = storedDeletedPosts ? new Set(JSON.parse(storedDeletedPosts)) : new Set();
+      this.deletedSignalIds = storedDeletedSignals ? new Set(JSON.parse(storedDeletedSignals)) : new Set();
+
+      const rawPosts: Post[] = storedPosts ? JSON.parse(storedPosts) : [];
+      const rawSignals: ExternalSignal[] = storedSignals ? JSON.parse(storedSignals) : [];
+
+      this.posts = rawPosts.filter(p => !this.deletedPostIds.has(p.post_id));
+      this.signals = rawSignals.filter(s => !this.deletedSignalIds.has(s.signal_id));
     } catch (e) {
       console.error('Failed to load local storage:', e);
       this.posts = [];
       this.signals = [];
+      this.deletedPostIds = new Set();
+      this.deletedSignalIds = new Set();
+    }
+  }
+
+  private persistDeleted() {
+    try {
+      localStorage.setItem(STORAGE_KEY_DELETED_POSTS, JSON.stringify(Array.from(this.deletedPostIds)));
+      localStorage.setItem(STORAGE_KEY_DELETED_SIGNALS, JSON.stringify(Array.from(this.deletedSignalIds)));
+    } catch (e) {
+      console.error('Failed to persist tombstones:', e);
     }
   }
 
@@ -102,14 +130,29 @@ class StorageService {
       this.unsubscribeFirestorePosts = onSnapshot(postsQuery, async (snapshot) => {
         const remotePosts: Post[] = [];
         snapshot.forEach((d) => {
-          remotePosts.push(d.data() as Post);
+          const data = d.data() as Post;
+          const pid = data.post_id || d.id;
+
+          // If this post was marked as deleted locally, immediately purge it from cloud and skip adding to memory
+          if (this.deletedPostIds.has(pid) || this.deletedPostIds.has(d.id)) {
+            console.log(`[Firestore] Purging zombie post from cloud: ${pid}`);
+            deleteDoc(d.ref).catch(() => {});
+            return;
+          }
+
+          remotePosts.push({
+            ...data,
+            post_id: pid,
+          });
         });
 
         // Merge logic: index remote posts by post_id
         const remoteMap = new Map<string, Post>(remotePosts.map(p => [p.post_id, p]));
 
-        // Check if there are local posts that don't exist in Firestore (e.g. created offline or before connection)
-        const unSyncedLocalPosts = this.posts.filter(localPost => !remoteMap.has(localPost.post_id));
+        // Check if there are local posts that don't exist in Firestore (never backfill deleted posts!)
+        const unSyncedLocalPosts = this.posts.filter(localPost => 
+          !remoteMap.has(localPost.post_id) && !this.deletedPostIds.has(localPost.post_id)
+        );
 
         // Backfill local posts to Cloud Firestore tagged with this user's UID
         if (unSyncedLocalPosts.length > 0 && isFirebaseConfigured()) {
@@ -119,7 +162,7 @@ class StorageService {
               if (!localPost.user_id) {
                 localPost.user_id = uid;
               }
-              if (localPost.user_id === uid) {
+              if (localPost.user_id === uid && !this.deletedPostIds.has(localPost.post_id)) {
                 await setDoc(doc(firestoreDb, 'posts', localPost.post_id), sanitizeForFirestore(localPost));
                 remoteMap.set(localPost.post_id, localPost);
               }
@@ -129,10 +172,10 @@ class StorageService {
           }
         }
 
-        // Combined post list sorted descending by IST posted_at
-        this.posts = Array.from(remoteMap.values()).sort(
-          (a, b) => new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime()
-        );
+        // Combined post list sorted descending by IST posted_at (strictly filtered against tombstones)
+        this.posts = Array.from(remoteMap.values())
+          .filter(p => !this.deletedPostIds.has(p.post_id))
+          .sort((a, b) => new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime());
         this.persistLocal();
       }, (error) => {
         console.warn('[Firestore] Posts listener fallback to local:', error);
@@ -145,11 +188,25 @@ class StorageService {
       this.unsubscribeFirestoreSignals = onSnapshot(signalsQuery, async (snapshot) => {
         const remoteSignals: ExternalSignal[] = [];
         snapshot.forEach((d) => {
-          remoteSignals.push(d.data() as ExternalSignal);
+          const data = d.data() as ExternalSignal;
+          const sid = data.signal_id || d.id;
+
+          if (this.deletedSignalIds.has(sid) || this.deletedSignalIds.has(d.id)) {
+            console.log(`[Firestore] Purging zombie signal from cloud: ${sid}`);
+            deleteDoc(d.ref).catch(() => {});
+            return;
+          }
+
+          remoteSignals.push({
+            ...data,
+            signal_id: sid,
+          });
         });
 
         const remoteMap = new Map<string, ExternalSignal>(remoteSignals.map(s => [s.signal_id, s]));
-        const unSyncedLocalSignals = this.signals.filter(localSig => !remoteMap.has(localSig.signal_id));
+        const unSyncedLocalSignals = this.signals.filter(localSig => 
+          !remoteMap.has(localSig.signal_id) && !this.deletedSignalIds.has(localSig.signal_id)
+        );
 
         if (unSyncedLocalSignals.length > 0 && isFirebaseConfigured()) {
           console.log(`[Firestore] Preserving & backfilling ${unSyncedLocalSignals.length} local signals to Cloud Firestore for user ${uid}...`);
@@ -158,7 +215,7 @@ class StorageService {
               if (!localSig.user_id) {
                 localSig.user_id = uid;
               }
-              if (localSig.user_id === uid) {
+              if (localSig.user_id === uid && !this.deletedSignalIds.has(localSig.signal_id)) {
                 await setDoc(doc(firestoreDb, 'external_signals', localSig.signal_id), sanitizeForFirestore(localSig));
                 remoteMap.set(localSig.signal_id, localSig);
               }
@@ -168,9 +225,9 @@ class StorageService {
           }
         }
 
-        this.signals = Array.from(remoteMap.values()).sort(
-          (a, b) => new Date(b.week_of).getTime() - new Date(a.week_of).getTime()
-        );
+        this.signals = Array.from(remoteMap.values())
+          .filter(s => !this.deletedSignalIds.has(s.signal_id))
+          .sort((a, b) => new Date(b.week_of).getTime() - new Date(a.week_of).getTime());
         this.persistLocal();
       }, (error) => {
         console.warn('[Firestore] Signals listener fallback to local:', error);
@@ -195,15 +252,17 @@ class StorageService {
   // --- Post Methods ---
 
   public getPosts(postType?: PostType): Post[] {
+    const active = this.posts.filter(p => !this.deletedPostIds.has(p.post_id));
     if (postType) {
-      return this.posts
+      return active
         .filter(p => p.post_type === postType)
         .sort((a, b) => new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime());
     }
-    return [...this.posts].sort((a, b) => new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime());
+    return [...active].sort((a, b) => new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime());
   }
 
   public getPostById(postId: string): Post | undefined {
+    if (this.deletedPostIds.has(postId)) return undefined;
     return this.posts.find(p => p.post_id === postId);
   }
 
@@ -301,16 +360,46 @@ class StorageService {
   }
 
   public async deletePost(postId: string): Promise<void> {
+    // Locate post before removing to extract media reference
+    const targetPost = this.posts.find(p => p.post_id === postId);
+    const mediaRef = targetPost?.media_ref;
+
+    // 1. Mark as permanently deleted in local tombstone
+    this.deletedPostIds.add(postId);
+    this.persistDeleted();
+
+    // 2. Immediately remove from active memory & update local storage
     this.posts = this.posts.filter(p => p.post_id !== postId);
     this.persistLocal();
 
+    // 3. Purge media thumbnail from Supabase Storage
+    if (mediaRef) {
+      await this.deleteMedia(mediaRef);
+    }
+
+    // 4. Purge from Cloud Firestore if connected
     const uid = this.currentUserId || auth?.currentUser?.uid;
     if (isFirebaseConfigured() && db && uid) {
+      const firestoreDb = db;
       try {
-        await deleteDoc(doc(db, 'posts', postId));
-        console.log('[Firestore] Post deleted from cloud:', postId);
+        // Direct doc deletion by ID
+        await deleteDoc(doc(firestoreDb, 'posts', postId));
+        console.log('[Firestore] Post deleted from cloud by ID:', postId);
       } catch (err) {
-        console.error('[Firestore] Failed to delete post from cloud:', err);
+        console.warn('[Firestore] Direct deleteDoc failed, trying query delete:', err);
+      }
+
+      // Query deletion in case document had an auto-generated Firestore doc ID
+      try {
+        const postsCol = collection(firestoreDb, 'posts');
+        const q = query(postsCol, where('post_id', '==', postId));
+        const snap = await getDocs(q);
+        const batch: Promise<any>[] = [];
+        snap.forEach(d => batch.push(deleteDoc(d.ref).catch(() => {})));
+        await Promise.all(batch);
+        console.log('[Firestore] Query deleteDoc purged docs for post:', postId);
+      } catch (err) {
+        console.warn('[Firestore] Query deleteDoc failed:', err);
       }
     }
   }
@@ -322,10 +411,20 @@ class StorageService {
   public async clearAllData(): Promise<void> {
     const postIdsToDelete = this.posts.map(p => p.post_id);
     const signalIdsToDelete = this.signals.map(s => s.signal_id);
+    const mediaRefsToDelete = this.posts.map(p => p.media_ref).filter(Boolean) as string[];
+
+    postIdsToDelete.forEach(id => this.deletedPostIds.add(id));
+    signalIdsToDelete.forEach(id => this.deletedSignalIds.add(id));
+    this.persistDeleted();
 
     this.posts = [];
     this.signals = [];
     this.persistLocal();
+
+    // Purge media from Supabase storage
+    for (const ref of mediaRefsToDelete) {
+      await this.deleteMedia(ref);
+    }
 
     const uid = this.currentUserId || auth?.currentUser?.uid;
     if (isFirebaseConfigured() && db && uid) {
@@ -360,7 +459,9 @@ class StorageService {
   // --- External Signals Methods ---
 
   public getSignals(): ExternalSignal[] {
-    return [...this.signals].sort((a, b) => new Date(b.week_of).getTime() - new Date(a.week_of).getTime());
+    return this.signals
+      .filter(s => !this.deletedSignalIds.has(s.signal_id))
+      .sort((a, b) => new Date(b.week_of).getTime() - new Date(a.week_of).getTime());
   }
 
   public async addSignal(signal: Omit<ExternalSignal, 'signal_id' | 'created_at'>): Promise<ExternalSignal> {
@@ -388,15 +489,30 @@ class StorageService {
   }
 
   public async deleteSignal(signalId: string): Promise<void> {
+    this.deletedSignalIds.add(signalId);
+    this.persistDeleted();
+
     this.signals = this.signals.filter(s => s.signal_id !== signalId);
     this.persistLocal();
 
     const uid = this.currentUserId || auth?.currentUser?.uid;
     if (isFirebaseConfigured() && db && uid) {
+      const firestoreDb = db;
       try {
-        await deleteDoc(doc(db, 'external_signals', signalId));
+        await deleteDoc(doc(firestoreDb, 'external_signals', signalId));
       } catch (err) {
-        console.error('[Firestore] Failed to delete signal from cloud:', err);
+        console.warn('[Firestore] Direct deleteDoc signal failed:', err);
+      }
+
+      try {
+        const col = collection(firestoreDb, 'external_signals');
+        const q = query(col, where('signal_id', '==', signalId));
+        const snap = await getDocs(q);
+        const batch: Promise<any>[] = [];
+        snap.forEach(d => batch.push(deleteDoc(d.ref).catch(() => {})));
+        await Promise.all(batch);
+      } catch (err) {
+        console.warn('[Firestore] Query deleteDoc signal failed:', err);
       }
     }
   }
@@ -442,6 +558,96 @@ class StorageService {
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
+  }
+
+  /**
+   * Deletes a thumbnail or media file from Supabase Storage bucket.
+   */
+  public async deleteMedia(mediaRef?: string): Promise<boolean> {
+    if (!mediaRef || !isSupabaseConfigured() || !supabase) return false;
+    // Skip base64 data URLs or blob URLs
+    if (mediaRef.startsWith('data:') || mediaRef.startsWith('blob:')) return false;
+
+    try {
+      const bucket = supabaseConfig.bucketName;
+      let path = '';
+
+      const marker = `/${bucket}/`;
+      const idx = mediaRef.indexOf(marker);
+      if (idx !== -1) {
+        path = decodeURIComponent(mediaRef.substring(idx + marker.length));
+      } else if (mediaRef.includes('thumbnails/')) {
+        const tIdx = mediaRef.indexOf('thumbnails/');
+        path = decodeURIComponent(mediaRef.substring(tIdx));
+      } else {
+        const parts = mediaRef.split('/');
+        path = `thumbnails/${parts[parts.length - 1]}`;
+      }
+
+      if (!path) return false;
+
+      // Pass both full path and variant without/with 'thumbnails/' prefix to ensure match
+      const pathsToDelete = [path];
+      if (path.startsWith('thumbnails/')) {
+        pathsToDelete.push(path.replace('thumbnails/', ''));
+      } else {
+        pathsToDelete.push(`thumbnails/${path}`);
+      }
+
+      const { data, error } = await supabase.storage
+        .from(bucket)
+        .remove(pathsToDelete);
+
+      if (error) {
+        console.error('[Supabase Media Deletion Error]:', error);
+        return false;
+      }
+
+      console.log('[Supabase Media Deleted Successfully]:', data);
+      return true;
+    } catch (err) {
+      console.error('[Supabase Delete Exception]:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Scans Supabase Storage bucket for orphaned thumbnails that no longer correspond to active posts
+   * and purges them.
+   */
+  public async purgeOrphanedThumbnails(): Promise<number> {
+    if (!isSupabaseConfigured() || !supabase) return 0;
+
+    try {
+      const bucket = supabaseConfig.bucketName;
+      const { data: files, error } = await supabase.storage.from(bucket).list('thumbnails');
+      if (error || !files) {
+        console.warn('[Supabase] Failed to list thumbnails for orphan cleanup:', error);
+        return 0;
+      }
+
+      // Collect all active mediaRefs
+      const activeUrls = new Set(this.posts.map(p => p.media_ref).filter(Boolean) as string[]);
+      const toDelete: string[] = [];
+
+      for (const file of files) {
+        // If file is not referenced by any active post
+        const isReferenced = Array.from(activeUrls).some(url => url.includes(file.name));
+        if (!isReferenced) {
+          toDelete.push(`thumbnails/${file.name}`);
+        }
+      }
+
+      if (toDelete.length > 0) {
+        console.log(`[Supabase] Purging ${toDelete.length} orphaned thumbnails:`, toDelete);
+        await supabase.storage.from(bucket).remove(toDelete);
+      }
+
+      return toDelete.length;
+    } catch (err) {
+      console.error('[Supabase] Orphan cleanup error:', err);
+      return 0;
+    }
   }
 }
 

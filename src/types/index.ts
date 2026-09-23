@@ -95,6 +95,7 @@ export interface UserProfile {
   gender: Gender;
   relationship: RelationshipStatus;
   onboarding_completed: boolean;
+  deletion_pin?: string;
   created_at: string;
   updated_at: string;
 }

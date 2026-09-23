@@ -7,9 +7,10 @@ import { storageService } from '../services/storageService';
 interface PostTimelineProps {
   posts: Post[];
   postType: PostType;
+  onRequestDeletePost?: (post: Post) => void;
 }
 
-export const PostTimeline: React.FC<PostTimelineProps> = ({ posts, postType }) => {
+export const PostTimeline: React.FC<PostTimelineProps> = ({ posts, postType, onRequestDeletePost }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'completed' | 'pending'>('all');
   const [viewFormat, setViewFormat] = useState<'date_grouped' | 'flat'>('date_grouped');
@@ -27,8 +28,12 @@ export const PostTimeline: React.FC<PostTimelineProps> = ({ posts, postType }) =
     return true;
   });
 
-  const handleDeletePost = (postId: string) => {
-    storageService.deletePost(postId);
+  const handleDeletePost = (post: Post) => {
+    if (onRequestDeletePost) {
+      onRequestDeletePost(post);
+    } else {
+      storageService.deletePost(post.post_id);
+    }
   };
 
   // Group by IST Date (YYYY-MM-DD or formatted date string)
@@ -251,7 +256,7 @@ export const PostTimeline: React.FC<PostTimelineProps> = ({ posts, postType }) =
                           )}
 
                           <button
-                            onClick={() => handleDeletePost(post.post_id)}
+                            onClick={() => handleDeletePost(post)}
                             className="p-1.5 rounded-[4px] text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                             title="Remove post"
                           >
@@ -330,7 +335,7 @@ export const PostTimeline: React.FC<PostTimelineProps> = ({ posts, postType }) =
                   )}
 
                   <button
-                    onClick={() => handleDeletePost(post.post_id)}
+                    onClick={() => handleDeletePost(post)}
                     className="p-1.5 rounded-[4px] text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                     title="Remove post"
                   >

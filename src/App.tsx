@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { PostType, SlotSource, TimeSlotRecommendation, UserProfile } from './types';
+import { Post, PostType, SlotSource, TimeSlotRecommendation, UserProfile } from './types';
 import { storageService } from './services/storageService';
 import { userService } from './services/userService';
 import { generateRecommendation, computeMatrixStats, computeComparisonReport, getEngineStage } from './services/predictionEngine';
@@ -14,6 +14,8 @@ import { QuickPostModal } from './components/QuickPostModal';
 import { SmartSlotModal } from './components/SmartSlotModal';
 import { SmartSlot } from './services/slotDistributionEngine';
 import { OnboardingModal } from './components/OnboardingModal';
+import { SettingsModal } from './components/SettingsModal';
+import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { LandingView } from './components/LandingView';
 import { ExploreView } from './components/ExploreView';
 import { AboutView } from './components/AboutView';
@@ -42,6 +44,8 @@ export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState<boolean>(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [deleteTargetPost, setDeleteTargetPost] = useState<Post | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [, setVersion] = useState(0);
 
@@ -152,6 +156,11 @@ export const App: React.FC = () => {
     setCurrentView('landing');
   };
 
+  const handleConfirmDeletePost = async (postId: string) => {
+    await storageService.deletePost(postId);
+    setVersion(v => v + 1);
+  };
+
   const firebaseReady = isFirebaseConfigured();
   const supabaseReady = isSupabaseConfigured();
 
@@ -199,6 +208,7 @@ export const App: React.FC = () => {
         currentUser={currentUser}
         userProfile={userProfile}
         onEditProfile={() => setIsOnboardingOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
         onSignOut={handleSignOut}
       />
 
@@ -267,6 +277,7 @@ export const App: React.FC = () => {
           <PostTimeline
             posts={currentPosts}
             postType={activePostType}
+            onRequestDeletePost={(post) => setDeleteTargetPost(post)}
           />
         )}
 
@@ -345,6 +356,30 @@ export const App: React.FC = () => {
           }}
         />
       )}
+
+      {/* Creator Settings & Security PIN Modal */}
+      {currentUser && (
+        <SettingsModal
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          currentUser={currentUser}
+          userProfile={userProfile}
+          onProfileUpdated={(updatedProfile) => {
+            setUserProfile(updatedProfile);
+            setVersion(v => v + 1);
+          }}
+        />
+      )}
+
+      {/* PIN-Protected Post Deletion Modal */}
+      <DeleteConfirmModal
+        isOpen={!!deleteTargetPost}
+        onClose={() => setDeleteTargetPost(null)}
+        post={deleteTargetPost}
+        userProfile={userProfile}
+        onConfirmDelete={handleConfirmDeletePost}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+      />
 
       {/* Standard Legal Footer */}
       <LegalFooter onNavigate={setCurrentView} />

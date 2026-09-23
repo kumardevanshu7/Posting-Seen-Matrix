@@ -39,8 +39,6 @@ export const QuickPostModal: React.FC<QuickPostModalProps> = ({
   const [historicalViews, setHistoricalViews] = useState<string>('');
 
   const [title, setTitle] = useState<string>(initialTitle || '');
-  const [caption, setCaption] = useState<string>('');
-  const [notes, setNotes] = useState<string>('');
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
@@ -52,8 +50,6 @@ export const QuickPostModal: React.FC<QuickPostModalProps> = ({
       setPostType(defaultPostType);
       setSlotSource(defaultSlotSource);
       setTitle(initialTitle || '');
-      setCaption('');
-      setNotes('');
       setMediaPreview(null);
       setHistoricalViews('');
 
@@ -122,8 +118,6 @@ export const QuickPostModal: React.FC<QuickPostModalProps> = ({
         title: title.trim() || undefined,
         post_type: postType,
         posted_at: effectiveTimestampUTC,
-        caption: caption.trim() || undefined,
-        notes: notes.trim() || undefined,
         slot_source: isHistorical ? 'user' : slotSource,
         media_ref: mediaPreview || undefined,
         views_24h: parsedViews,
@@ -240,7 +234,7 @@ export const QuickPostModal: React.FC<QuickPostModalProps> = ({
                     max={maxDateIST}
                     value={pastDate}
                     onChange={(e) => setPastDate(e.target.value)}
-                    className="w-full h-8 px-2.5 rounded-[5px] bg-background border border-input text-foreground text-xs font-mono focus:outline-none focus:border-ring"
+                    className="w-full h-8 px-2.5 rounded-[5px] bg-background border border-input text-foreground text-xs font-mono focus:outline-none focus:border-ring [color-scheme:dark] cursor-pointer"
                   />
                 </div>
 
@@ -253,7 +247,7 @@ export const QuickPostModal: React.FC<QuickPostModalProps> = ({
                     required
                     value={pastTime}
                     onChange={(e) => setPastTime(e.target.value)}
-                    className="w-full h-8 px-2.5 rounded-[5px] bg-background border border-input text-foreground text-xs font-mono focus:outline-none focus:border-ring"
+                    className="w-full h-8 px-2.5 rounded-[5px] bg-background border border-input text-foreground text-xs font-mono focus:outline-none focus:border-ring [color-scheme:dark] cursor-pointer"
                   />
                 </div>
               </div>
@@ -393,20 +387,6 @@ export const QuickPostModal: React.FC<QuickPostModalProps> = ({
             />
           </div>
 
-          {/* Caption */}
-          <div>
-            <label className="sec-label text-[10px] block mb-1">
-              Caption / Hook Summary (Optional)
-            </label>
-            <input
-              type="text"
-              value={caption}
-              onChange={(e) => setCaption(e.target.value)}
-              placeholder="e.g. 3 principles for clean code architecture..."
-              className="w-full h-[34px] px-3 rounded-[6px] bg-background border border-input text-foreground text-xs placeholder:text-muted-foreground focus:outline-none focus:border-ring"
-            />
-          </div>
-
           {/* Thumbnail Upload */}
           <div>
             <div className="flex items-center justify-between mb-1">
@@ -443,20 +423,6 @@ export const QuickPostModal: React.FC<QuickPostModalProps> = ({
                 />
               </label>
             )}
-          </div>
-
-          {/* Notes */}
-          <div>
-            <label className="sec-label text-[10px] block mb-1">
-              Experiment Notes (Optional)
-            </label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="e.g. Tested fast 3s visual hook; trending audio"
-              rows={2}
-              className="w-full p-2.5 rounded-[6px] bg-background border border-input text-foreground text-xs placeholder:text-muted-foreground focus:outline-none focus:border-ring resize-none leading-relaxed"
-            />
           </div>
 
           {/* Buttons */}
