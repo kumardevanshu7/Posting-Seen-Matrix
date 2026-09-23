@@ -140,13 +140,15 @@ export const CheckInQueue: React.FC<CheckInQueueProps> = ({ posts, onCheckInComp
                       Unlocks in {status.timeRemainingFormatted}
                     </span>
 
-                    <button
-                      onClick={() => handleSimulate24h(post.post_id)}
-                      className="font-mono text-[11px] text-muted-foreground hover:text-foreground transition underline underline-offset-2"
-                      title="Testing shortcut: simulate 24 hours elapsed"
-                    >
-                      Simulate 24h
-                    </button>
+                    {import.meta.env.DEV && (
+                      <button
+                        onClick={() => handleSimulate24h(post.post_id)}
+                        className="font-mono text-[10px] text-muted-foreground hover:text-amber-400 transition underline underline-offset-2"
+                        title="Development shortcut: simulate 24 hours elapsed"
+                      >
+                        [DEV] Fast-forward 24h
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

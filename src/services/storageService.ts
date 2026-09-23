@@ -54,33 +54,75 @@ class StorageService {
 
   private initFirestoreSync() {
     if (!db) return;
+    const firestoreDb = db;
 
     try {
-      // 1. Realtime listener for posts
-      const postsCol = collection(db, 'posts');
+      // 1. Realtime listener for posts with non-destructive merge & backfill
+      const postsCol = collection(firestoreDb, 'posts');
       const postsQuery = query(postsCol, orderBy('posted_at', 'desc'));
 
-      this.unsubscribeFirestorePosts = onSnapshot(postsQuery, (snapshot) => {
+      this.unsubscribeFirestorePosts = onSnapshot(postsQuery, async (snapshot) => {
         const remotePosts: Post[] = [];
         snapshot.forEach((d) => {
           remotePosts.push(d.data() as Post);
         });
-        this.posts = remotePosts;
+
+        // Merge logic: index remote posts by post_id
+        const remoteMap = new Map<string, Post>(remotePosts.map(p => [p.post_id, p]));
+
+        // Check if there are local posts that don't exist in Firestore (e.g. created offline or before connection)
+        const unSyncedLocalPosts = this.posts.filter(localPost => !remoteMap.has(localPost.post_id));
+
+        // Backfill local posts to Cloud Firestore so they are never silently erased
+        if (unSyncedLocalPosts.length > 0 && isFirebaseConfigured()) {
+          console.log(`[Firestore] Preserving & backfilling ${unSyncedLocalPosts.length} local posts to Cloud Firestore...`);
+          for (const localPost of unSyncedLocalPosts) {
+            try {
+              await setDoc(doc(firestoreDb, 'posts', localPost.post_id), localPost);
+              remoteMap.set(localPost.post_id, localPost);
+            } catch (syncErr) {
+              console.warn('[Firestore] Failed to backfill local post:', localPost.post_id, syncErr);
+            }
+          }
+        }
+
+        // Combined post list sorted descending by IST posted_at
+        this.posts = Array.from(remoteMap.values()).sort(
+          (a, b) => new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime()
+        );
         this.persistLocal();
       }, (error) => {
         console.warn('[Firestore] Posts listener fallback to local:', error);
       });
 
-      // 2. Realtime listener for external signals
-      const signalsCol = collection(db, 'external_signals');
+      // 2. Realtime listener for external signals with non-destructive merge & backfill
+      const signalsCol = collection(firestoreDb, 'external_signals');
       const signalsQuery = query(signalsCol, orderBy('week_of', 'desc'));
 
-      this.unsubscribeFirestoreSignals = onSnapshot(signalsQuery, (snapshot) => {
+      this.unsubscribeFirestoreSignals = onSnapshot(signalsQuery, async (snapshot) => {
         const remoteSignals: ExternalSignal[] = [];
         snapshot.forEach((d) => {
           remoteSignals.push(d.data() as ExternalSignal);
         });
-        this.signals = remoteSignals;
+
+        const remoteMap = new Map<string, ExternalSignal>(remoteSignals.map(s => [s.signal_id, s]));
+        const unSyncedLocalSignals = this.signals.filter(localSig => !remoteMap.has(localSig.signal_id));
+
+        if (unSyncedLocalSignals.length > 0 && isFirebaseConfigured()) {
+          console.log(`[Firestore] Preserving & backfilling ${unSyncedLocalSignals.length} local signals to Cloud Firestore...`);
+          for (const localSig of unSyncedLocalSignals) {
+            try {
+              await setDoc(doc(firestoreDb, 'external_signals', localSig.signal_id), localSig);
+              remoteMap.set(localSig.signal_id, localSig);
+            } catch (syncErr) {
+              console.warn('[Firestore] Failed to backfill local signal:', localSig.signal_id, syncErr);
+            }
+          }
+        }
+
+        this.signals = Array.from(remoteMap.values()).sort(
+          (a, b) => new Date(b.week_of).getTime() - new Date(a.week_of).getTime()
+        );
         this.persistLocal();
       }, (error) => {
         console.warn('[Firestore] Signals listener fallback to local:', error);
@@ -182,6 +224,12 @@ class StorageService {
   }
 
   public simulate24hElapsed(postId: string): void {
+    // Strictly dev-only helper to protect production timestamp immutability (Spec Section 3.1)
+    if (!import.meta.env.DEV) {
+      console.warn('[Security] simulate24hElapsed is strictly disabled in production builds to preserve timestamp immutability.');
+      return;
+    }
+
     const post = this.posts.find(p => p.post_id === postId);
     if (post) {
       const simulatedTime = new Date(Date.now() - 24.5 * 3600 * 1000).toISOString();
@@ -208,10 +256,48 @@ class StorageService {
     }
   }
 
-  public clearAllData(): void {
+  /**
+   * Clears all local data AND deletes matching records from Cloud Firestore
+   * so records do not resurrect on the next realtime snapshot.
+   */
+  public async clearAllData(): Promise<void> {
+    const postIdsToDelete = this.posts.map(p => p.post_id);
+    const signalIdsToDelete = this.signals.map(s => s.signal_id);
+
     this.posts = [];
     this.signals = [];
     this.persistLocal();
+
+    if (isFirebaseConfigured() && db) {
+      const firestoreDb = db;
+      try {
+        const batchDeletes: Promise<any>[] = [];
+        postIdsToDelete.forEach(id => {
+          batchDeletes.push(deleteDoc(doc(firestoreDb, 'posts', id)).catch(() => {}));
+        });
+        signalIdsToDelete.forEach(id => {
+          batchDeletes.push(deleteDoc(doc(firestoreDb, 'external_signals', id)).catch(() => {}));
+        });
+        await Promise.all(batchDeletes);
+        console.log('[Firestore] All data purged from Cloud Firestore.');
+      } catch (err) {
+        console.error('[Firestore] Failed to purge cloud collections:', err);
+      }
+    }
+  }
+
+  /**
+   * Unsubscribes active Firestore listeners to prevent memory leaks during lifecycle teardowns.
+   */
+  public destroy(): void {
+    if (this.unsubscribeFirestorePosts) {
+      this.unsubscribeFirestorePosts();
+      this.unsubscribeFirestorePosts = null;
+    }
+    if (this.unsubscribeFirestoreSignals) {
+      this.unsubscribeFirestoreSignals();
+      this.unsubscribeFirestoreSignals = null;
+    }
   }
 
   // --- External Signals Methods ---
@@ -223,7 +309,7 @@ class StorageService {
   public async addSignal(signal: Omit<ExternalSignal, 'signal_id' | 'created_at'>): Promise<ExternalSignal> {
     const newSignal: ExternalSignal = {
       ...signal,
-      signal_id: 'sig_' + Math.random().toString(36).substring(2, 9),
+      signal_id: 'sig_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36),
       created_at: new Date().toISOString(),
     };
 
