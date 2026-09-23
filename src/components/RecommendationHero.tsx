@@ -79,7 +79,11 @@ export const RecommendationHero: React.FC<RecommendationHeroProps> = ({
             <div className="p-3 rounded-[6px] bg-secondary border border-border">
               <div className="sec-label text-[10px]">Confidence</div>
               <div className="font-mono text-sm font-medium text-foreground mt-1">
-                {hasData ? `${recommendation.confidence_score}%` : 'Baseline'}
+                {recommendation.sample_size > 0
+                  ? `${recommendation.confidence_score}%`
+                  : recommendation.is_exploration
+                  ? 'Bandit Explore'
+                  : 'Baseline'}
               </div>
             </div>
 

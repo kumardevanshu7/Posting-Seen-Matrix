@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { DayStats, TimeBucket } from '../types';
+import { DayStats, TimeBucket, BucketStats } from '../types';
 import { TIME_BUCKET_CONFIG } from '../utils/dateUtils';
 
 interface HeatmapMatrixProps {
@@ -9,7 +9,7 @@ interface HeatmapMatrixProps {
 const BUCKET_ORDER: TimeBucket[] = ['morning', 'afternoon', 'evening', 'night'];
 
 export const HeatmapMatrix: React.FC<HeatmapMatrixProps> = ({ dayStats }) => {
-  const [selectedSlot, setSelectedSlot] = useState<{ dayName: string; bucket: TimeBucket; stats: any } | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<{ dayName: string; bucket: TimeBucket; stats: BucketStats } | null>(null);
 
   let maxMedian = 0;
   dayStats.forEach(d => {
