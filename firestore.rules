@@ -1,0 +1,43 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check valid string
+    function isNonEmptyString(text) {
+      return text is string && text.size() > 0;
+    }
+
+    // 1. Posts Collection: Strict validation for Time Matrix
+    match /posts/{postId} {
+      // Allow reading posts
+      allow read: if true;
+
+      // Allow creating posts with valid types and immutable timestamp
+      allow create: if request.resource.data.post_type in ['trial', 'public']
+                    && request.resource.data.slot_source in ['algorithm', 'user']
+                    && isNonEmptyString(request.resource.data.posted_at);
+
+      // Allow updating 24-hour views and completion timestamp
+      allow update: if request.resource.data.post_type in ['trial', 'public']
+                    && request.resource.data.slot_source in ['algorithm', 'user']
+                    && (request.resource.data.views_24h == null || request.resource.data.views_24h is number);
+
+      // Allow deleting a post
+      allow delete: if true;
+    }
+
+    // 2. External Signals Collection (Weekly Platform Notes)
+    match /external_signals/{signalId} {
+      allow read: if true;
+      allow create, update: if isNonEmptyString(request.resource.data.week_of)
+                            && isNonEmptyString(request.resource.data.note_text);
+      allow delete: if true;
+    }
+
+    // Default: Deny all other collections for security
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

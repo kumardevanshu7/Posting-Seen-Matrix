@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+    --card: #0f0f0f;
+    --card-foreground: #ededed;
+    --popover: #141414;
+    --popover-foreground: #ededed;
+    --primary: #ffffff;
+    --primary-foreground: #0a0a0a;
+    --secondary: #141414;
+    --secondary-foreground: #ededed;
+    --muted: #141414;
+    --muted-foreground: #9a9a9a;
+    --accent: #1a1a1a;
+    --accent-foreground: #ededed;
+    --destructive: #e0726a;
+    --border: #1f1f1f;
+    --input: #333333;
+    --ring: #777777;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: 'Geist', ui-sans-serif, system-ui, sans-serif;
+    letter-spacing: -0.011em;
+  }
+}
+
+/* Hairline scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0a0a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #262626;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #404040;
+}
+
+/* Executor section label utility */
+.sec-label {
+  font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+/* Executor Mono Meta Utility */
+.font-meta {
+  font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 12px;
+}
+
+/* Focus ring standard */
+.focus-ring {
+  @apply focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring;
+}
