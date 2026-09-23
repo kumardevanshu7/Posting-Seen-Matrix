@@ -40,16 +40,20 @@ export const LandingView: React.FC<LandingViewProps> = ({ onEnterApp, currentUse
       {/* Navigation */}
       <nav className="border-b border-border py-3.5 px-4 sm:px-8 bg-background/80 backdrop-blur-sm sticky top-0 z-30">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             <img 
-              src="/arigato-labs-logo.png" 
-              alt="Arigato Labs" 
-              className="h-6 sm:h-7 object-contain filter invert contrast-125" 
+              src="/android-chrome-192x192.png" 
+              alt="Time Matrix" 
+              className="w-8 h-8 rounded-[8px] object-cover border border-border shadow-sm" 
             />
-            <span className="text-border">/</span>
-            <span className="font-mono text-xs font-semibold tracking-tight text-foreground">
-              time matrix
-            </span>
+            <div className="flex flex-col">
+              <span className="font-mono text-xs sm:text-sm font-semibold tracking-tight text-foreground leading-none">
+                time matrix
+              </span>
+              <span className="text-[10px] text-muted-foreground font-mono leading-none mt-1">
+                by Arigato Labs
+              </span>
+            </div>
           </div>
 
           <div className="flex items-center gap-2.5">
@@ -95,6 +99,17 @@ export const LandingView: React.FC<LandingViewProps> = ({ onEnterApp, currentUse
       <section className="py-16 sm:py-24 px-4 sm:px-8 border-b border-border">
         <div className="max-w-3xl mx-auto text-center space-y-6">
           
+          {/* Big App Logo in Hero */}
+          <div className="flex justify-center">
+            <div className="p-2 rounded-[18px] bg-secondary/50 border border-border inline-block shadow-lg">
+              <img 
+                src="/android-chrome-192x192.png" 
+                alt="Time Matrix App Logo" 
+                className="w-16 h-16 sm:w-20 sm:h-20 rounded-[14px] object-cover shadow-sm"
+              />
+            </div>
+          </div>
+
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-[5px] bg-secondary border border-border">
             <span className="w-1.5 h-1.5 rounded-full bg-foreground" />
             <span className="sec-label text-[10px]">

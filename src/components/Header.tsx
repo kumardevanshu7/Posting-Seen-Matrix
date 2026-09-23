@@ -56,24 +56,37 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border px-4 sm:px-6 py-2.5 transition-colors">
       <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
         
-        {/* Brand & Wordmark (With big logo in Header) */}
+        {/* Brand & Wordmark (With official Time Matrix Logo) */}
         <div className="flex items-center justify-between w-full md:w-auto gap-4">
-          <div className="flex items-center gap-3">
-            <img 
-              src="/arigato-labs-logo.png" 
-              alt="Arigato Labs" 
-              onClick={() => onToggleView('explore')}
-              className="h-6 sm:h-7 object-contain filter invert contrast-125 cursor-pointer hover:opacity-80 transition-opacity" 
-              title="Arigato Labs • Explore"
-            />
-            <span className="text-border">/</span>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-xs sm:text-sm font-semibold tracking-tight text-foreground">
-                time matrix
-              </span>
-              <span className="text-[10px] font-mono uppercase tracking-sec-label px-1.5 py-0.5 rounded-[5px] bg-secondary border border-border text-muted-foreground">
-                IST
-              </span>
+          <div className="flex items-center gap-2.5">
+            <div 
+              onClick={() => onToggleView('app')}
+              className="relative flex items-center justify-center cursor-pointer group"
+              title="Time Matrix"
+            >
+              <img 
+                src="/android-chrome-192x192.png" 
+                alt="Time Matrix" 
+                className="w-8 h-8 rounded-[8px] object-cover border border-border shadow-sm group-hover:scale-105 active:scale-95 transition-all" 
+              />
+            </div>
+            
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs sm:text-sm font-semibold tracking-tight text-foreground leading-none">
+                  time matrix
+                </span>
+                <span className="text-[9px] font-mono uppercase tracking-sec-label px-1 py-0.5 rounded-[4px] bg-secondary border border-border text-muted-foreground">
+                  IST
+                </span>
+              </div>
+              <button 
+                onClick={() => onToggleView('explore')}
+                className="text-[10px] text-muted-foreground hover:text-foreground font-mono leading-none mt-1 text-left flex items-center gap-1 transition-colors"
+                title="Explore Arigato Labs"
+              >
+                <span>by Arigato Labs</span>
+              </button>
             </div>
           </div>
 
