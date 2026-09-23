@@ -38,6 +38,8 @@ class StorageService {
   private unsubscribeFirestorePosts: (() => void) | null = null;
   private unsubscribeFirestoreSignals: (() => void) | null = null;
   private unsubscribeAuth: (() => void) | null = null;
+  private _snapshotLock = false; // Mutex: prevents concurrent async snapshot handlers from racing
+
 
   constructor() {
     this.loadFromLocal();
@@ -108,6 +110,7 @@ class StorageService {
   }
 
   private detachFirestoreListeners() {
+    this._snapshotLock = false;
     if (this.unsubscribeFirestorePosts) {
       this.unsubscribeFirestorePosts();
       this.unsubscribeFirestorePosts = null;
@@ -128,58 +131,75 @@ class StorageService {
       const postsQuery = query(postsCol, where('user_id', '==', uid));
 
       this.unsubscribeFirestorePosts = onSnapshot(postsQuery, async (snapshot) => {
-        const remotePosts: Post[] = [];
-        snapshot.forEach((d) => {
-          const data = d.data() as Post;
-          const pid = data.post_id || d.id;
+        // Serialize snapshot processing — prevents concurrent snapshots from racing
+        // and overwriting each other's post list (resurrection bug)
+        while (this._snapshotLock) {
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        this._snapshotLock = true;
 
-          // If this post was marked as deleted locally, immediately purge it from cloud and skip adding to memory
-          if (this.deletedPostIds.has(pid) || this.deletedPostIds.has(d.id)) {
-            console.log(`[Firestore] Purging zombie post from cloud: ${pid}`);
-            deleteDoc(d.ref).catch(() => {});
-            return;
-          }
+        try {
+          const remotePosts: Post[] = [];
+          snapshot.forEach((d) => {
+            const data = d.data() as Post;
+            const pid = data.post_id || d.id;
 
-          remotePosts.push({
-            ...data,
-            post_id: pid,
+            // Reload tombstone from localStorage to get freshest state before every snapshot
+            const rawDeleted = localStorage.getItem(STORAGE_KEY_DELETED_POSTS);
+            if (rawDeleted) {
+              try {
+                const arr: string[] = JSON.parse(rawDeleted);
+                arr.forEach(id => this.deletedPostIds.add(id));
+              } catch {}
+            }
+
+            // If this post was marked as deleted locally, immediately purge it from cloud and skip
+            if (this.deletedPostIds.has(pid) || this.deletedPostIds.has(d.id)) {
+              console.log(`[Firestore] Purging zombie post from cloud: ${pid}`);
+              deleteDoc(d.ref).catch(() => {});
+              return;
+            }
+
+            remotePosts.push({ ...data, post_id: pid });
           });
-        });
 
-        // Merge logic: index remote posts by post_id
-        const remoteMap = new Map<string, Post>(remotePosts.map(p => [p.post_id, p]));
+          // Merge logic: index remote posts by post_id
+          const remoteMap = new Map<string, Post>(remotePosts.map(p => [p.post_id, p]));
 
-        // Check if there are local posts that don't exist in Firestore (never backfill deleted posts!)
-        const unSyncedLocalPosts = this.posts.filter(localPost => 
-          !remoteMap.has(localPost.post_id) && !this.deletedPostIds.has(localPost.post_id)
-        );
+          // Check if there are local posts that don't exist in Firestore (never backfill deleted posts!)
+          const unSyncedLocalPosts = this.posts.filter(localPost =>
+            !remoteMap.has(localPost.post_id) && !this.deletedPostIds.has(localPost.post_id)
+          );
 
-        // Backfill local posts to Cloud Firestore tagged with this user's UID
-        if (unSyncedLocalPosts.length > 0 && isFirebaseConfigured()) {
-          console.log(`[Firestore] Preserving & backfilling ${unSyncedLocalPosts.length} local posts to Cloud Firestore for user ${uid}...`);
-          for (const localPost of unSyncedLocalPosts) {
-            try {
-              if (!localPost.user_id) {
-                localPost.user_id = uid;
+          // Backfill local posts to Cloud Firestore tagged with this user's UID
+          if (unSyncedLocalPosts.length > 0 && isFirebaseConfigured()) {
+            console.log(`[Firestore] Preserving & backfilling ${unSyncedLocalPosts.length} local posts to Cloud Firestore for user ${uid}...`);
+            for (const localPost of unSyncedLocalPosts) {
+              try {
+                if (!localPost.user_id) localPost.user_id = uid;
+                if (localPost.user_id === uid && !this.deletedPostIds.has(localPost.post_id)) {
+                  await setDoc(doc(firestoreDb, 'posts', localPost.post_id), sanitizeForFirestore(localPost));
+                  remoteMap.set(localPost.post_id, localPost);
+                }
+              } catch (syncErr) {
+                console.warn('[Firestore] Failed to backfill local post:', localPost.post_id, syncErr);
               }
-              if (localPost.user_id === uid && !this.deletedPostIds.has(localPost.post_id)) {
-                await setDoc(doc(firestoreDb, 'posts', localPost.post_id), sanitizeForFirestore(localPost));
-                remoteMap.set(localPost.post_id, localPost);
-              }
-            } catch (syncErr) {
-              console.warn('[Firestore] Failed to backfill local post:', localPost.post_id, syncErr);
             }
           }
-        }
 
-        // Combined post list sorted descending by IST posted_at (strictly filtered against tombstones)
-        this.posts = Array.from(remoteMap.values())
-          .filter(p => !this.deletedPostIds.has(p.post_id))
-          .sort((a, b) => new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime());
-        this.persistLocal();
+          // Combined post list sorted descending by IST posted_at (strictly filtered against tombstones)
+          this.posts = Array.from(remoteMap.values())
+            .filter(p => !this.deletedPostIds.has(p.post_id))
+            .sort((a, b) => new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime());
+          this.persistLocal();
+        } finally {
+          this._snapshotLock = false;
+        }
       }, (error) => {
+        this._snapshotLock = false;
         console.warn('[Firestore] Posts listener fallback to local:', error);
       });
+
 
       // 2. Realtime listener for external signals strictly scoped to authenticated user
       const signalsCol = collection(firestoreDb, 'external_signals');
