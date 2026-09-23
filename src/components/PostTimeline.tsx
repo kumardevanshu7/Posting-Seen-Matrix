@@ -60,8 +60,11 @@ export const PostTimeline: React.FC<PostTimelineProps> = ({
       };
     }
     groupedByDate[dateLabel].posts.push(post);
-    if (post.views_24h) {
-      groupedByDate[dateLabel].totalViews += post.views_24h;
+    const effectiveViews = (postType === 'trial' && post.promoted_to_public_at)
+      ? (post.trial_views_24h ?? post.views_24h)
+      : post.views_24h;
+    if (effectiveViews) {
+      groupedByDate[dateLabel].totalViews += effectiveViews;
     }
   });
 
