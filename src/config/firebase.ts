@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore, getFirestore } from 'firebase/firestore';
 import { 
   getAuth, 
   GoogleAuthProvider, 
@@ -41,7 +41,15 @@ export const app = isFirebaseConfigured()
   ? (getApps().length === 0 ? initializeApp(firebaseConfig) : getApp())
   : null;
 
-export const db = app ? getFirestore(app) : null;
+export const db = app 
+  ? (() => {
+      try {
+        return initializeFirestore(app, { ignoreUndefinedProperties: true });
+      } catch {
+        return getFirestore(app);
+      }
+    })()
+  : null;
 export const auth = app ? getAuth(app) : null;
 
 export async function loginWithGoogle(): Promise<User | null> {

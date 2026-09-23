@@ -15,6 +15,16 @@ import {
 const STORAGE_KEY_POSTS = 'time_matrix_posts_v3';
 const STORAGE_KEY_SIGNALS = 'time_matrix_signals_v3';
 
+function sanitizeForFirestore<T extends Record<string, any>>(obj: T): Record<string, any> {
+  const clean: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      clean[key] = value;
+    }
+  }
+  return clean;
+}
+
 class StorageService {
   private posts: Post[] = [];
   private signals: ExternalSignal[] = [];
@@ -35,6 +45,11 @@ class StorageService {
           this.currentUserId = newUid;
           if (newUid) {
             this.initFirestoreSync(newUid);
+          } else {
+            // User signed out: clear active memory & local storage to avoid data leakage across accounts
+            this.posts = [];
+            this.signals = [];
+            this.persistLocal();
           }
         }
       });
@@ -105,7 +120,7 @@ class StorageService {
                 localPost.user_id = uid;
               }
               if (localPost.user_id === uid) {
-                await setDoc(doc(firestoreDb, 'posts', localPost.post_id), localPost);
+                await setDoc(doc(firestoreDb, 'posts', localPost.post_id), sanitizeForFirestore(localPost));
                 remoteMap.set(localPost.post_id, localPost);
               }
             } catch (syncErr) {
@@ -144,7 +159,7 @@ class StorageService {
                 localSig.user_id = uid;
               }
               if (localSig.user_id === uid) {
-                await setDoc(doc(firestoreDb, 'external_signals', localSig.signal_id), localSig);
+                await setDoc(doc(firestoreDb, 'external_signals', localSig.signal_id), sanitizeForFirestore(localSig));
                 remoteMap.set(localSig.signal_id, localSig);
               }
             } catch (syncErr) {
@@ -220,7 +235,7 @@ class StorageService {
     // Sync to Cloud Firestore if authenticated
     if (isFirebaseConfigured() && db && uid) {
       try {
-        await setDoc(doc(db, 'posts', newPost.post_id), newPost);
+        await setDoc(doc(db, 'posts', newPost.post_id), sanitizeForFirestore(newPost));
         console.log('[Firestore] Post synced successfully:', newPost.post_id);
       } catch (err) {
         console.error('[Firestore] Failed to save post to cloud:', err);
@@ -362,7 +377,7 @@ class StorageService {
 
     if (isFirebaseConfigured() && db && uid) {
       try {
-        await setDoc(doc(db, 'external_signals', newSignal.signal_id), newSignal);
+        await setDoc(doc(db, 'external_signals', newSignal.signal_id), sanitizeForFirestore(newSignal));
         console.log('[Firestore] External signal saved to cloud:', newSignal.signal_id);
       } catch (err) {
         console.error('[Firestore] Failed to save signal to cloud:', err);

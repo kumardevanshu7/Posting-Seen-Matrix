@@ -324,6 +324,7 @@ export const App: React.FC = () => {
         <OnboardingModal
           isOpen={isOnboardingOpen}
           currentUser={currentUser}
+          initialProfile={userProfile}
           onComplete={(profile) => {
             setUserProfile(profile);
             setIsOnboardingOpen(false);

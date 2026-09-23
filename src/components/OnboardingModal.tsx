@@ -7,6 +7,7 @@ import { ArrowRight, Sparkles, UserCheck } from 'lucide-react';
 interface OnboardingModalProps {
   isOpen: boolean;
   currentUser: User;
+  initialProfile?: UserProfile | null;
   onComplete: (profile: UserProfile) => void;
 }
 
@@ -28,14 +29,25 @@ const RELATIONSHIP_OPTIONS: { value: RelationshipStatus; label: string }[] = [
 export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   isOpen,
   currentUser,
+  initialProfile,
   onComplete,
 }) => {
-  const [name, setName] = useState<string>(currentUser.displayName || '');
-  const [age, setAge] = useState<string>('');
-  const [gender, setGender] = useState<Gender>('prefer-not-to-say');
-  const [relationship, setRelationship] = useState<RelationshipStatus>('single');
+  const [name, setName] = useState<string>(initialProfile?.name || currentUser.displayName || '');
+  const [age, setAge] = useState<string>(initialProfile?.age ? initialProfile.age.toString() : '');
+  const [gender, setGender] = useState<Gender>(initialProfile?.gender || 'prefer-not-to-say');
+  const [relationship, setRelationship] = useState<RelationshipStatus>(initialProfile?.relationship || 'single');
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setName(initialProfile?.name || currentUser.displayName || '');
+      setAge(initialProfile?.age ? initialProfile.age.toString() : '');
+      setGender(initialProfile?.gender || 'prefer-not-to-say');
+      setRelationship(initialProfile?.relationship || 'single');
+      setErrorMsg(null);
+    }
+  }, [isOpen, initialProfile, currentUser]);
 
   if (!isOpen) return null;
 
